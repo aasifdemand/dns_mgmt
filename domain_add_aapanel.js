@@ -5,7 +5,7 @@ const https = require("https");
 // ===============================
 // 🌍 CONFIG FROM .env
 // ===============================
-const PANEL_URL = process.env.AAPANEL_URL;
+const PANEL_URL = process.env.AAPANEL_ADDURL;
 const COOKIE = process.env.AAPANEL_COOKIE;
 const X_HTTP_TOKEN = process.env.AAPANEL_TOKEN;
 

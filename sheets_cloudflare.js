@@ -5,7 +5,7 @@ const fs = require("fs");
 const https = require("https");
 
 // 🌍 Cloudflare Config
-const API = `https://api.cloudflare.com/client/v4/zones/${process.env.ZONE_ID}/dns_records`;
+const API = `https://api.cloudflare.com/client/v4/zones/${process.env.CLOUDFLARE_ZONE_ID}/dns_records`;
 const TOKEN = process.env.CLOUDFLARE_TOKEN;
 
 // 📌 Local DNS file (XLSX)
