@@ -1,288 +1,207 @@
-// const { NodeSSH } = require("node-ssh");
-// const ssh = new NodeSSH();
-
-// // 🌍 SERVER CONFIG (change if needed)
-// const HOST = "172.245.178.197";
-// const USER = "root";
-// const PASSWORD = "i769LrA4No83bMxmGV";
-// const POSTAL_DOMAIN = "postal.verisence.tech";
-
-// // 🧠 Helper
-// async function run(cmd, label) {
-//         console.log(`\n▶ ${label}`);
-//         const result = await ssh.execCommand(cmd, { cwd: "/root" });
-
-//         if (result.stdout) console.log("STDOUT:\n", result.stdout);
-//         if (result.stderr) console.log("STDERR:\n", result.stderr);
-
-//         if (result.code !== 0) {
-//                 throw new Error(`Command failed (${label})`);
-//         }
-// }
-
-// (async () => {
-//         try {
-//                 console.log("🔐 Connecting to server...");
-//                 await ssh.connect({ host: HOST, username: USER, password: PASSWORD });
-
-//                 // 🧹 CLEAN OLD POSTAL + DOCKER
-//                 await run(
-//                         `
-// set -e
-// docker rm -f postal postal-mariadb postal-caddy 2>/dev/null || true
-// rm -rf /opt/postal || true
-// rm -f /usr/bin/postal || true
-
-// # Remove old docker binaries (conflict fixes)
-// rm -f /usr/bin/docker || true
-// rm -f /usr/bin/docker.io || true
-// rm -f /usr/bin/containerd || true
-// rm -f /usr/bin/containerd-shim || true
-// rm -f /usr/bin/runc || true
-
-// # Remove packages
-// apt-get remove -y docker docker.io docker-doc docker-compose podman-docker containerd runc docker-ce docker-ce-cli containerd.io docker-buildx-plugin || true
-// apt-get autoremove -y
-// rm -rf /var/lib/docker /var/lib/containerd || true
-
-// apt-get clean
-// apt update -y
-// `,
-//                         "🧽 Cleaning old Docker & Postal"
-//                 );
-
-//                 // 📦 REQUIRED PACKAGES
-//                 await run(
-//                         `
-// set -e
-// apt install -y git curl jq ca-certificates gnupg lsb-release netcat-openbsd
-// `,
-//                         "📦 Installing required packages"
-//                 );
-
-//                 // 🐳 INSTALL DOCKER
-//                 await run(
-//                         `
-// set -e
-// curl -fsSL https://get.docker.com | sh
-// systemctl restart docker
-// docker --version
-// docker compose version
-// `,
-//                         "🐳 Installing Docker 29.x"
-//                 );
-
-//                 // 🔧 FIX FOR POSTAL + NEW DOCKER API
-//                 await run(
-//                         `
-// set -e
-// echo 'export DOCKER_API_VERSION=1.44' >> /root/.bashrc
-// export DOCKER_API_VERSION=1.44
-// `,
-//                         "🔧 Setting DOCKER_API_VERSION override (permanent)"
-//                 );
-
-//                 // 📥 POSTAL INSTALLER
-//                 await run(
-//                         `
-// set -e
-// git clone https://github.com/postalserver/install /opt/postal/install || true
-// ln -sf /opt/postal/install/bin/postal /usr/bin/postal
-// `,
-//                         "📥 Cloning Postal installer"
-//                 );
-
-//                 // ⚙️ SYSTEM SETTINGS
-//                 await run(
-//                         `
-// set -e
-// apt upgrade -y
-// hostnamectl set-hostname ${POSTAL_DOMAIN}
-// `,
-//                         "⚙️ Upgrading OS & setting hostname"
-//                 );
-
-//                 // 🛢 START MARIADB
-//                 await run(
-//                         `
-// set -e
-// docker run -d --name postal-mariadb \
-//   -p 127.0.0.1:3306:3306 \
-//   --restart always \
-//   -e MARIADB_DATABASE=postal \
-//   -e MARIADB_ROOT_PASSWORD=postal \
-//   mariadb
-// `,
-//                         "🛢 Starting MariaDB"
-//                 );
-
-//                 // ⏱ WAIT FOR DB
-//                 await run(
-//                         `
-// set -e
-// echo "⏳ Waiting for MariaDB..."
-// for i in {1..60}; do
-//   if nc -z 127.0.0.1 3306 2>/dev/null; then
-//     echo "✅ MariaDB ready."
-//     exit 0
-//   fi
-//   echo "… waiting ($i/60)"
-//   sleep 1
-// done
-// echo "❌ MariaDB failed to start."
-// exit 1
-// `,
-//                         "⏱ Waiting for MariaDB"
-//                 );
-
-//                 // 🪄 BOOTSTRAP POSTAL
-//                 await run(
-//                         `
-// set -e
-// postal bootstrap ${POSTAL_DOMAIN}
-// sed -i 's/use_ip_pools:.*/use_ip_pools: true/' /opt/postal/config/postal.yml || echo "use_ip_pools: true" >> /opt/postal/config/postal.yml
-// `,
-//                         "🪄 Bootstrapping Postal"
-//                 );
-
-//                 // ⚙️ INITIALIZE POSTAL (API FIX APPLIED)
-//                 await run(
-//                         `
-// set -e
-// DOCKER_API_VERSION=1.44 postal initialize
-// `,
-//                         "⚙️ Initializing Postal"
-//                 );
-
-//                 // WAIT AFTER MIGRATIONS
-//                 await run(`sleep 10`, "⌛ Waiting after DB migrations");
-
-//                 // 👤 MANUAL USER CREATION IS SAFEST
-//                 await run(
-//                         `
-// set -e
-// echo "⚠️ Enter admin details below:"
-// DOCKER_API_VERSION=1.44 postal make-user || true
-// `,
-//                         "👤 Creating Postal admin user"
-//                 );
-
-//                 // 🚀 START POSTAL
-//                 await run(
-//                         `
-// set -e
-// DOCKER_API_VERSION=1.44 postal start
-// sleep 5
-// postal status
-// `,
-//                         "🚀 Starting Postal"
-//                 );
-
-//                 // 🌐 CADDY HTTPS
-//                 await run(
-//                         `
-// set -e
-// docker run -d --name postal-caddy \
-//   --restart always --network host \
-//   -v /opt/postal/config/Caddyfile:/etc/caddy/Caddyfile \
-//   -v /opt/postal/caddy-data:/data \
-//   caddy
-// `,
-//                         "🌐 Starting Caddy HTTPS"
-//                 );
-
-//                 // 🔁 SAFE FIREWALL RULE
-//                 await run(
-//                         `
-// set -e
-// iptables -t nat -A PREROUTING -p tcp --dport 587 -j REDIRECT --to-port 25
-// `,
-//                         "🔁 Enabling SMTP redirect (587 → 25)"
-//                 );
-
-//                 console.log("\n🎉 DONE! Postal installed successfully.");
-//                 console.log(`🌍 Visit: https://${POSTAL_DOMAIN}`);
-//                 console.log("🔐 Use the admin account you created.\n");
-
-//                 ssh.dispose();
-//         } catch (err) {
-//                 console.error("\n❌ Fatal error:", err.message);
-//                 try { ssh.dispose(); } catch { }
-//                 process.exit(1);
-//         }
-// })();
-
-
 require("dotenv").config();
 const { NodeSSH } = require("node-ssh");
 
 const ssh = new NodeSSH();
 
-// ================= ENV CONFIG =================
 const {
         HOST,
         SSH_USER,
         SSH_PASSWORD,
-        POSTAL_DOMAIN
+        POSTAL_DOMAIN,
+        ADMIN_EMAIL,
+        ADMIN_FIRST,
+        ADMIN_LAST,
+        ADMIN_PASSWORD,
 } = process.env;
 
-// ================= HELPERS =================
-async function run(cmd, label) {
+if (
+        !HOST ||
+        !SSH_USER ||
+        !SSH_PASSWORD ||
+        !POSTAL_DOMAIN ||
+        !ADMIN_EMAIL ||
+        !ADMIN_FIRST ||
+        !ADMIN_LAST ||
+        !ADMIN_PASSWORD
+) {
+        console.error("Missing required environment variables");
+        process.exit(1);
+}
+
+/* --------------------------------------------------
+   Strict command execution (stop on error)
+-------------------------------------------------- */
+async function runStrict(cmd, label) {
         console.log(`\n▶ ${label}`);
-        const result = await ssh.execCommand(cmd, { cwd: "/root" });
+        const res = await ssh.execCommand(cmd, { cwd: "/root" });
 
-        if (result.stdout) console.log(result.stdout);
-        if (result.stderr) console.error(result.stderr);
+        if (res.stdout) console.log(res.stdout);
+        if (res.stderr) console.error(res.stderr);
 
-        if (result.code !== 0) {
-                throw new Error(`Command failed: ${label}`);
+        if (res.code !== 0) {
+                throw new Error(`Step failed: ${label}`);
         }
 }
 
-// ================= MAIN =================
+/* --------------------------------------------------
+   Wait for MariaDB
+-------------------------------------------------- */
+async function waitForMariaDB(timeout = 60) {
+        console.log("Waiting for MariaDB...");
+        const start = Date.now();
+
+        while (true) {
+                const res = await ssh.execCommand(
+                        "nc -z 127.0.0.1 3306"
+                );
+
+                if (res.code === 0) return;
+
+                if ((Date.now() - start) / 1000 > timeout) {
+                        throw new Error("MariaDB did not become ready");
+                }
+
+                await new Promise((r) => setTimeout(r, 1000));
+        }
+}
+
+/* --------------------------------------------------
+   Find Postal web container dynamically
+-------------------------------------------------- */
+async function getPostalWebContainer() {
+        const res = await ssh.execCommand(`
+docker ps --format '{{.Names}}' | grep -E 'postal.*web|postal-web|postal_web' | head -n 1
+`);
+        const name = res.stdout.trim();
+        if (!name) {
+                throw new Error("Postal web container not found");
+        }
+        return name;
+}
+
+/* --------------------------------------------------
+   Wait until Postal web container is running
+-------------------------------------------------- */
+async function waitForPostalReady(timeout = 180) {
+        console.log("Waiting for Postal services...");
+        const start = Date.now();
+
+        while (true) {
+                const res = await ssh.execCommand(`
+docker ps --format '{{.Names}}' | grep -E 'postal.*web|postal-web|postal_web' >/dev/null 2>&1
+`);
+
+                if (res.code === 0) return;
+
+                if ((Date.now() - start) / 1000 > timeout) {
+                        throw new Error("Postal did not become ready");
+                }
+
+                await new Promise((r) => setTimeout(r, 3000));
+        }
+}
+
+/* --------------------------------------------------
+   Create / update admin user (correct config + password)
+-------------------------------------------------- */
+async function createPostalAdmin() {
+        console.log("\nCreating Postal admin user");
+
+        const container = await getPostalWebContainer();
+
+        const cmd = `
+docker exec \
+  -e POSTAL_CONFIG_FILE=/config/postal.yml \
+  ${container} \
+  postal console <<'RUBY'
+user = User.find_by(email: "${ADMIN_EMAIL}")
+
+if user
+  puts "Admin exists, resetting password"
+else
+  puts "Creating admin user"
+  user = User.new(
+    email: "${ADMIN_EMAIL}",
+    first_name: "${ADMIN_FIRST}",
+    last_name: "${ADMIN_LAST}",
+    admin: true
+  )
+end
+
+user.password = "${ADMIN_PASSWORD}"
+user.password_confirmation = "${ADMIN_PASSWORD}"
+
+if user.save
+  puts "Admin ready"
+else
+  puts user.errors.full_messages
+  exit 1
+end
+RUBY
+`;
+
+        const res = await ssh.execCommand(cmd);
+
+        if (res.stdout) console.log(res.stdout);
+        if (res.stderr) console.error(res.stderr);
+
+        if (res.code !== 0) {
+                throw new Error("Admin creation/update failed");
+        }
+}
+
+/* --------------------------------------------------
+   Main
+-------------------------------------------------- */
 (async () => {
         try {
-                console.log("🔐 Connecting to server...");
+                console.log("Connecting to server...");
                 await ssh.connect({
                         host: HOST,
                         username: SSH_USER,
-                        password: SSH_PASSWORD
+                        password: SSH_PASSWORD,
                 });
 
-                // ---------- CLEANUP ----------
-                await run(`
-set -e
+                /* Cleanup */
+                await runStrict(`
 docker rm -f postal postal-mariadb postal-caddy 2>/dev/null || true
+docker volume rm postal_db postal_storage postal_caddy_data 2>/dev/null || true
+docker system prune -f || true
 rm -rf /opt/postal || true
 rm -f /usr/bin/postal || true
+`, "Cleanup existing Postal");
+
+                /* Base packages */
+                await runStrict(`
 apt update -y
-`, "Cleanup old Postal");
+DEBIAN_FRONTEND=noninteractive apt install -y \
+git curl jq ca-certificates gnupg lsb-release netcat-openbsd
+`, "Install base packages");
 
-                // ---------- REQUIRED PACKAGES ----------
-                await run(`
-set -e
-apt install -y git curl jq ca-certificates gnupg lsb-release netcat-openbsd
-`, "Install required packages");
+                /* Docker */
+                await runStrict(`
+if command -v docker >/dev/null 2>&1; then
+  docker --version
+else
+  curl -fsSL https://get.docker.com | sh
+  systemctl start docker
+fi
+`, "Ensure Docker");
 
-                // ---------- DOCKER ----------
-                await run(`
-set -e
-curl -fsSL https://get.docker.com | sh
-systemctl restart docker
-docker --version
-`, "Install Docker");
-
-                // ---------- POSTAL INSTALL ----------
-                await run(`
-set -e
-git clone https://github.com/postalserver/install /opt/postal/install || true
+                /* Postal CLI */
+                await runStrict(`
+git clone https://github.com/postalserver/install /opt/postal/install
 ln -sf /opt/postal/install/bin/postal /usr/bin/postal
-hostnamectl set-hostname ${POSTAL_DOMAIN}
-`, "Install Postal");
+`, "Install Postal CLI");
 
-                // ---------- MARIADB ----------
-                await run(`
-set -e
+                /* Hostname */
+                await runStrict(
+                        `hostnamectl set-hostname ${POSTAL_DOMAIN}`,
+                        "Set hostname"
+                );
+
+                /* MariaDB */
+                await runStrict(`
 docker run -d --name postal-mariadb \
   -p 127.0.0.1:3306:3306 \
   --restart always \
@@ -291,74 +210,53 @@ docker run -d --name postal-mariadb \
   mariadb:10.11
 `, "Start MariaDB");
 
-                // ---------- WAIT FOR DB ----------
-                await run(`
-set -e
-for i in {1..60}; do
-  nc -z 127.0.0.1 3306 && exit 0
-  sleep 1
-done
-exit 1
-`, "Wait for MariaDB");
+                await waitForMariaDB();
 
-                // ---------- BOOTSTRAP ----------
-                await run(`
-set -e
-postal bootstrap ${POSTAL_DOMAIN}
-`, "Postal bootstrap");
+                /* Bootstrap */
+                await runStrict(
+                        `postal bootstrap ${POSTAL_DOMAIN}`,
+                        "Postal bootstrap"
+                );
 
-                // ---------- 🔥 CRITICAL FIX: ENABLE IP POOLS ----------
-                await run(`
-set -e
-echo "🔧 Enabling IP Pools"
-if grep -q "^use_ip_pools:" /opt/postal/config/postal.yml; then
-  sed -i 's/^use_ip_pools:.*/use_ip_pools: true/' /opt/postal/config/postal.yml
-else
-  echo "use_ip_pools: true" >> /opt/postal/config/postal.yml
-fi
-`, "Enable use_ip_pools");
+                /* Enable IP pools */
+                await runStrict(
+                        `echo "use_ip_pools: true" >> /opt/postal/config/postal.yml`,
+                        "Enable IP pools"
+                );
 
-                // ---------- INITIALIZE ----------
-                await run(`
-set -e
-DOCKER_API_VERSION=1.44 postal initialize
-`, "Postal initialize");
+                /* Initialize */
+                await runStrict(
+                        `DOCKER_API_VERSION=1.44 postal initialize`,
+                        "Postal initialize"
+                );
 
-                await run(`sleep 10`, "Wait after migrations");
+                /* Start Postal */
+                await runStrict(
+                        `DOCKER_API_VERSION=1.44 postal start`,
+                        "Start Postal"
+                );
 
-                // ---------- MANUAL USER CREATION ----------
-                await run(`
-set -e
-echo "⚠️ Run this manually:"
-echo "DOCKER_API_VERSION=1.44 postal make-user"
-`, "Admin user step");
+                await waitForPostalReady();
 
-                // ---------- START POSTAL ----------
-                await run(`
-set -e
-DOCKER_API_VERSION=1.44 postal start
-sleep 5
-DOCKER_API_VERSION=1.44 postal status
-`, "Start Postal");
+                /* Admin user */
+                await createPostalAdmin();
 
-                // ---------- HTTPS (CADDY) ----------
-                await run(`
-set -e
+                /* HTTPS */
+                await runStrict(`
 docker run -d --name postal-caddy \
-  --restart always \
-  --network host \
+  --restart always --network host \
   -v /opt/postal/config/Caddyfile:/etc/caddy/Caddyfile \
   -v /opt/postal/caddy-data:/data \
   caddy
-`, "Start Caddy HTTPS");
+`, "Start Caddy");
 
-                console.log("\n🎉 POSTAL INSTALLED CORRECTLY");
-                console.log("✅ IP POOLS ENABLED");
-                console.log(`🌍 https://${POSTAL_DOMAIN}`);
+                console.log("\nPostal setup finished");
+                console.log(`URL: https://${POSTAL_DOMAIN}`);
+                console.log(`Admin: ${ADMIN_EMAIL}`);
 
                 ssh.dispose();
         } catch (err) {
-                console.error("\n❌ Fatal error:", err.message);
+                console.error("ERROR:", err.message);
                 ssh.dispose();
                 process.exit(1);
         }
