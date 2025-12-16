@@ -1,8 +1,11 @@
-require("dotenv").config();
-const axios = require("axios");
-const XLSX = require("xlsx");
-const https = require("https");
 
+
+import dotenv from 'dotenv';
+import axios from 'axios';
+import XLSX from 'xlsx';
+import https from 'https';
+
+dotenv.config();
 /* ===================== CONFIG ===================== */
 
 const DNS_FILE_URL = process.env.DNS_FILE_URL;

@@ -93,7 +93,7 @@ function exec(conn, command, label) {
 }
 
 /* --------------------------------------------------
-   Create admin (Postal 3.x – CORRECT & SAFE)
+   Create admin (Postal 3.x – OFFICIAL & CORRECT)
 -------------------------------------------------- */
 async function createAdmin(conn, admin) {
         console.log("\n▶ Create Postal admin");
@@ -120,12 +120,10 @@ async function createAdmin(conn, admin) {
                                 process.stdout.write(text);
                                 buffer += text;
 
-                                // ✅ Detect REAL success
                                 if (buffer.includes("User has been created")) {
                                         success = true;
                                 }
 
-                                // ❌ Detect REAL failure
                                 if (
                                         buffer.includes("Failed to create user") ||
                                         buffer.includes("E-Mail address is invalid") ||
@@ -136,7 +134,6 @@ async function createAdmin(conn, admin) {
                                         return;
                                 }
 
-                                // Send next input ONLY when prompt ends with :
                                 if (buffer.trimEnd().endsWith(":") && stepIndex < steps.length) {
                                         stream.write(steps[stepIndex] + "\n");
                                         stepIndex++;
@@ -158,7 +155,6 @@ async function createAdmin(conn, admin) {
         });
 }
 
-
 /* --------------------------------------------------
    MAIN
 -------------------------------------------------- */
@@ -167,6 +163,7 @@ async function main() {
         const conn = await connectSSH();
 
         try {
+                /* Cleanup */
                 await exec(
                         conn,
                         `
@@ -177,6 +174,7 @@ rm -rf /opt/postal /usr/bin/postal
                         "Cleanup old Postal"
                 );
 
+                /* Base packages */
                 await exec(
                         conn,
                         `
@@ -186,6 +184,7 @@ apt install -y git curl jq netcat-openbsd ca-certificates
                         "Install base packages"
                 );
 
+                /* Docker */
                 await exec(
                         conn,
                         `
@@ -194,6 +193,7 @@ command -v docker || curl -fsSL https://get.docker.com | sh
                         "Ensure Docker"
                 );
 
+                /* Postal CLI */
                 await exec(
                         conn,
                         `
@@ -203,6 +203,7 @@ ln -sf /opt/postal/install/bin/postal /usr/bin/postal
                         "Install Postal CLI"
                 );
 
+                /* MariaDB */
                 await exec(
                         conn,
                         `
@@ -216,26 +217,34 @@ docker run -d --name postal-mariadb \
                         "Start MariaDB"
                 );
 
+                /* Bootstrap */
                 await exec(
                         conn,
                         `postal bootstrap ${process.env.POSTAL_DOMAIN}`,
                         "Postal bootstrap"
                 );
 
+                /* 🔥 ENABLE IP POOLS (POSTAL 3.x – CORRECT KEY) */
                 await exec(
                         conn,
                         `
-sed -i '/^general:/,/^[^ ]/d' /opt/postal/config/postal.yml || true
-printf "\\ngeneral:\\n  use_ip_pools: true\\n" >> /opt/postal/config/postal.yml
+# Remove existing smtp block if present
+sed -i '/^smtp:/,/^[^ ]/d' /opt/postal/config/postal.yml || true
+
+# Add correct smtp.use_ip_pools config
+printf "\\nsmtp:\\n  use_ip_pools: true\\n" >> /opt/postal/config/postal.yml
 `,
-                        "Enable IP pools"
+                        "Enable IP pools (smtp.use_ip_pools)"
                 );
 
+                /* Initialize + Start */
                 await exec(conn, `postal initialize`, "Postal initialize");
                 await exec(conn, `postal start`, "Postal start");
 
+                /* Admin */
                 await createAdmin(conn, admin);
 
+                /* Start Caddy */
                 await exec(
                         conn,
                         `
