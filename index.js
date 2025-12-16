@@ -1,263 +1,269 @@
-require("dotenv").config();
-const { NodeSSH } = require("node-ssh");
+import "dotenv/config";
+import { Client } from "ssh2";
+import inquirer from "inquirer";
 
-const ssh = new NodeSSH();
-
-const {
-        HOST,
-        SSH_USER,
-        SSH_PASSWORD,
-        POSTAL_DOMAIN,
-        ADMIN_EMAIL,
-        ADMIN_FIRST,
-        ADMIN_LAST,
-        ADMIN_PASSWORD,
-} = process.env;
-
-if (
-        !HOST ||
-        !SSH_USER ||
-        !SSH_PASSWORD ||
-        !POSTAL_DOMAIN ||
-        !ADMIN_EMAIL ||
-        !ADMIN_FIRST ||
-        !ADMIN_LAST ||
-        !ADMIN_PASSWORD
-) {
-        console.error("Missing required environment variables");
-        process.exit(1);
+/* --------------------------------------------------
+   Prompt admin details (LOCAL)
+-------------------------------------------------- */
+async function promptAdmin() {
+        return inquirer.prompt([
+                {
+                        type: "input",
+                        name: "email",
+                        message: "Admin email:",
+                        validate: (v) => v.includes("@") || "Invalid email",
+                },
+                {
+                        type: "input",
+                        name: "firstName",
+                        message: "First name:",
+                },
+                {
+                        type: "input",
+                        name: "lastName",
+                        message: "Last name:",
+                },
+                {
+                        type: "password",
+                        name: "password",
+                        message: "Initial admin password (min 8 chars):",
+                        mask: "*",
+                        validate: (v) =>
+                                v.length >= 8 || "Password must be at least 8 characters",
+                },
+        ]);
 }
 
 /* --------------------------------------------------
-   Strict command execution (stop on error)
+   SSH connection (hardened)
 -------------------------------------------------- */
-async function runStrict(cmd, label) {
-        console.log(`\n▶ ${label}`);
-        const res = await ssh.execCommand(cmd, { cwd: "/root" });
+function connectSSH() {
+        return new Promise((resolve, reject) => {
+                const conn = new Client();
 
-        if (res.stdout) console.log(res.stdout);
-        if (res.stderr) console.error(res.stderr);
-
-        if (res.code !== 0) {
-                throw new Error(`Step failed: ${label}`);
-        }
+                conn
+                        .on("ready", () => {
+                                console.log("✅ SSH connected");
+                                resolve(conn);
+                        })
+                        .on("error", reject)
+                        .connect({
+                                host: process.env.HOST,
+                                username: process.env.SSH_USER,
+                                password: process.env.SSH_PASSWORD,
+                                keepaliveInterval: 10_000,
+                                keepaliveCountMax: 5,
+                                readyTimeout: 60_000,
+                        });
+        });
 }
 
 /* --------------------------------------------------
-   Wait for MariaDB
+   Exec helper (safe for long commands)
 -------------------------------------------------- */
-async function waitForMariaDB(timeout = 60) {
-        console.log("Waiting for MariaDB...");
-        const start = Date.now();
+function exec(conn, command, label) {
+        return new Promise((resolve, reject) => {
+                console.log(`\n▶ ${label}`);
 
-        while (true) {
-                const res = await ssh.execCommand(
-                        "nc -z 127.0.0.1 3306"
+                conn.exec(
+                        command,
+                        { pty: true, env: { TERM: "xterm" } },
+                        (err, stream) => {
+                                if (err) return reject(err);
+
+                                let finished = false;
+
+                                stream
+                                        .on("close", (code, signal) => {
+                                                finished = true;
+                                                if (code === 0) resolve();
+                                                else reject(new Error(`${label} failed (${code || signal})`));
+                                        })
+                                        .on("data", (d) => process.stdout.write(d))
+                                        .stderr.on("data", (d) => process.stderr.write(d));
+
+                                setTimeout(() => {
+                                        if (!finished) {
+                                                reject(new Error(`SSH stalled during: ${label}`));
+                                        }
+                                }, 30 * 60 * 1000);
+                        }
+                );
+        });
+}
+
+/* --------------------------------------------------
+   Create admin (Postal 3.x – CORRECT & SAFE)
+-------------------------------------------------- */
+async function createAdmin(conn, admin) {
+        console.log("\n▶ Create Postal admin");
+
+        return new Promise((resolve, reject) => {
+                conn.exec("postal make-user", { pty: true }, (err, stream) => {
+                        if (err) return reject(err);
+
+                        const steps = [
+                                admin.email,
+                                admin.firstName,
+                                admin.lastName,
+                                admin.password,
+                                admin.password,
+                                "y",
+                        ];
+
+                        let stepIndex = 0;
+                        let buffer = "";
+                        let success = false;
+
+                        stream.on("data", (data) => {
+                                const text = data.toString();
+                                process.stdout.write(text);
+                                buffer += text;
+
+                                // ✅ Detect REAL success
+                                if (buffer.includes("User has been created")) {
+                                        success = true;
+                                }
+
+                                // ❌ Detect REAL failure
+                                if (
+                                        buffer.includes("Failed to create user") ||
+                                        buffer.includes("E-Mail address is invalid") ||
+                                        buffer.includes("Password is too short")
+                                ) {
+                                        reject(new Error("Postal rejected admin user input"));
+                                        stream.end();
+                                        return;
+                                }
+
+                                // Send next input ONLY when prompt ends with :
+                                if (buffer.trimEnd().endsWith(":") && stepIndex < steps.length) {
+                                        stream.write(steps[stepIndex] + "\n");
+                                        stepIndex++;
+                                        buffer = "";
+                                }
+                        });
+
+                        stream.stderr.on("data", (d) => process.stderr.write(d));
+
+                        stream.on("close", () => {
+                                if (success) {
+                                        console.log("✅ Admin user created successfully");
+                                        resolve();
+                                } else {
+                                        reject(new Error("postal make-user did not confirm success"));
+                                }
+                        });
+                });
+        });
+}
+
+
+/* --------------------------------------------------
+   MAIN
+-------------------------------------------------- */
+async function main() {
+        const admin = await promptAdmin();
+        const conn = await connectSSH();
+
+        try {
+                await exec(
+                        conn,
+                        `
+docker rm -f postal postal-web-1 postal-worker-1 postal-smtp-1 postal-mariadb postal-caddy 2>/dev/null || true
+docker volume rm postal_db postal_storage postal_caddy_data 2>/dev/null || true
+rm -rf /opt/postal /usr/bin/postal
+`,
+                        "Cleanup old Postal"
                 );
 
-                if (res.code === 0) return;
-
-                if ((Date.now() - start) / 1000 > timeout) {
-                        throw new Error("MariaDB did not become ready");
-                }
-
-                await new Promise((r) => setTimeout(r, 1000));
-        }
-}
-
-/* --------------------------------------------------
-   Find Postal web container dynamically
--------------------------------------------------- */
-async function getPostalWebContainer() {
-        const res = await ssh.execCommand(`
-docker ps --format '{{.Names}}' | grep -E 'postal.*web|postal-web|postal_web' | head -n 1
-`);
-        const name = res.stdout.trim();
-        if (!name) {
-                throw new Error("Postal web container not found");
-        }
-        return name;
-}
-
-/* --------------------------------------------------
-   Wait until Postal web container is running
--------------------------------------------------- */
-async function waitForPostalReady(timeout = 180) {
-        console.log("Waiting for Postal services...");
-        const start = Date.now();
-
-        while (true) {
-                const res = await ssh.execCommand(`
-docker ps --format '{{.Names}}' | grep -E 'postal.*web|postal-web|postal_web' >/dev/null 2>&1
-`);
-
-                if (res.code === 0) return;
-
-                if ((Date.now() - start) / 1000 > timeout) {
-                        throw new Error("Postal did not become ready");
-                }
-
-                await new Promise((r) => setTimeout(r, 3000));
-        }
-}
-
-/* --------------------------------------------------
-   Create / update admin user (correct config + password)
--------------------------------------------------- */
-async function createPostalAdmin() {
-        console.log("\nCreating Postal admin user");
-
-        const container = await getPostalWebContainer();
-
-        const cmd = `
-docker exec \
-  -e POSTAL_CONFIG_FILE=/config/postal.yml \
-  ${container} \
-  postal console <<'RUBY'
-user = User.find_by(email: "${ADMIN_EMAIL}")
-
-if user
-  puts "Admin exists, resetting password"
-else
-  puts "Creating admin user"
-  user = User.new(
-    email: "${ADMIN_EMAIL}",
-    first_name: "${ADMIN_FIRST}",
-    last_name: "${ADMIN_LAST}",
-    admin: true
-  )
-end
-
-user.password = "${ADMIN_PASSWORD}"
-user.password_confirmation = "${ADMIN_PASSWORD}"
-
-if user.save
-  puts "Admin ready"
-else
-  puts user.errors.full_messages
-  exit 1
-end
-RUBY
-`;
-
-        const res = await ssh.execCommand(cmd);
-
-        if (res.stdout) console.log(res.stdout);
-        if (res.stderr) console.error(res.stderr);
-
-        if (res.code !== 0) {
-                throw new Error("Admin creation/update failed");
-        }
-}
-
-/* --------------------------------------------------
-   Main
--------------------------------------------------- */
-(async () => {
-        try {
-                console.log("Connecting to server...");
-                await ssh.connect({
-                        host: HOST,
-                        username: SSH_USER,
-                        password: SSH_PASSWORD,
-                });
-
-                /* Cleanup */
-                await runStrict(`
-docker rm -f postal postal-mariadb postal-caddy 2>/dev/null || true
-docker volume rm postal_db postal_storage postal_caddy_data 2>/dev/null || true
-docker system prune -f || true
-rm -rf /opt/postal || true
-rm -f /usr/bin/postal || true
-`, "Cleanup existing Postal");
-
-                /* Base packages */
-                await runStrict(`
+                await exec(
+                        conn,
+                        `
 apt update -y
-DEBIAN_FRONTEND=noninteractive apt install -y \
-git curl jq ca-certificates gnupg lsb-release netcat-openbsd
-`, "Install base packages");
+apt install -y git curl jq netcat-openbsd ca-certificates
+`,
+                        "Install base packages"
+                );
 
-                /* Docker */
-                await runStrict(`
-if command -v docker >/dev/null 2>&1; then
-  docker --version
-else
-  curl -fsSL https://get.docker.com | sh
-  systemctl start docker
-fi
-`, "Ensure Docker");
+                await exec(
+                        conn,
+                        `
+command -v docker || curl -fsSL https://get.docker.com | sh
+`,
+                        "Ensure Docker"
+                );
 
-                /* Postal CLI */
-                await runStrict(`
+                await exec(
+                        conn,
+                        `
 git clone https://github.com/postalserver/install /opt/postal/install
 ln -sf /opt/postal/install/bin/postal /usr/bin/postal
-`, "Install Postal CLI");
-
-                /* Hostname */
-                await runStrict(
-                        `hostnamectl set-hostname ${POSTAL_DOMAIN}`,
-                        "Set hostname"
+`,
+                        "Install Postal CLI"
                 );
 
-                /* MariaDB */
-                await runStrict(`
+                await exec(
+                        conn,
+                        `
 docker run -d --name postal-mariadb \
   -p 127.0.0.1:3306:3306 \
   --restart always \
   -e MARIADB_DATABASE=postal \
   -e MARIADB_ROOT_PASSWORD=postal \
   mariadb:10.11
-`, "Start MariaDB");
+`,
+                        "Start MariaDB"
+                );
 
-                await waitForMariaDB();
-
-                /* Bootstrap */
-                await runStrict(
-                        `postal bootstrap ${POSTAL_DOMAIN}`,
+                await exec(
+                        conn,
+                        `postal bootstrap ${process.env.POSTAL_DOMAIN}`,
                         "Postal bootstrap"
                 );
 
-                /* Enable IP pools */
-                await runStrict(
-                        `echo "use_ip_pools: true" >> /opt/postal/config/postal.yml`,
+                await exec(
+                        conn,
+                        `
+sed -i '/^general:/,/^[^ ]/d' /opt/postal/config/postal.yml || true
+printf "\\ngeneral:\\n  use_ip_pools: true\\n" >> /opt/postal/config/postal.yml
+`,
                         "Enable IP pools"
                 );
 
-                /* Initialize */
-                await runStrict(
-                        `DOCKER_API_VERSION=1.44 postal initialize`,
-                        "Postal initialize"
-                );
+                await exec(conn, `postal initialize`, "Postal initialize");
+                await exec(conn, `postal start`, "Postal start");
 
-                /* Start Postal */
-                await runStrict(
-                        `DOCKER_API_VERSION=1.44 postal start`,
-                        "Start Postal"
-                );
+                await createAdmin(conn, admin);
 
-                await waitForPostalReady();
+                await exec(
+                        conn,
+                        `
+cat > /opt/postal/config/Caddyfile <<EOF
+${process.env.POSTAL_DOMAIN} {
+  reverse_proxy 127.0.0.1:5000
+}
+EOF
 
-                /* Admin user */
-                await createPostalAdmin();
-
-                /* HTTPS */
-                await runStrict(`
-docker run -d --name postal-caddy \
-  --restart always --network host \
+docker run -d \
+  --name postal-caddy \
+  --restart always \
+  --network host \
   -v /opt/postal/config/Caddyfile:/etc/caddy/Caddyfile \
   -v /opt/postal/caddy-data:/data \
   caddy
-`, "Start Caddy");
+`,
+                        "Start Caddy"
+                );
 
-                console.log("\nPostal setup finished");
-                console.log(`URL: https://${POSTAL_DOMAIN}`);
-                console.log(`Admin: ${ADMIN_EMAIL}`);
-
-                ssh.dispose();
+                console.log("\n✅ POSTAL INSTALLED SUCCESSFULLY");
+                console.log(`🌐 https://${process.env.POSTAL_DOMAIN}`);
+                console.log(`👤 Admin: ${admin.email}`);
         } catch (err) {
-                console.error("ERROR:", err.message);
-                ssh.dispose();
-                process.exit(1);
+                console.error("\n❌ ERROR:", err.message);
+        } finally {
+                conn.end();
         }
-})();
+}
+
+main();
