@@ -1,14 +1,16 @@
-
-
-import dotenv from 'dotenv';
-import axios from 'axios';
-import XLSX from 'xlsx';
-import https from 'https';
+import dotenv from "dotenv";
+import axios from "axios";
+import XLSX from "xlsx";
+import https from "https";
+import readline from "readline";
 
 dotenv.config();
+
 /* ===================== CONFIG ===================== */
 
 const DNS_FILE_URL = process.env.DNS_FILE_URL;
+const DNS_SHEET_NAME = process.env.DNS_SHEET_NAME || "Sheet1";
+
 if (!DNS_FILE_URL) {
     console.error("❌ DNS_FILE_URL is required");
     process.exit(1);
@@ -22,54 +24,34 @@ const TARGET_DOMAINS = process.env.TARGET_DOMAINS
 
 const httpsAgent = new https.Agent({ keepAlive: true });
 
-function cfHeaders(token) {
-    return {
-        "Content-Type": "application/json",
-        Authorization: `Bearer ${token}`,
-    };
+const cfHeaders = token => ({
+    "Content-Type": "application/json",
+    Authorization: `Bearer ${token}`,
+});
+
+/* ===================== CONFIRM PROMPT ===================== */
+
+function askConfirmation() {
+    return new Promise(resolve => {
+        const rl = readline.createInterface({
+            input: process.stdin,
+            output: process.stdout,
+        });
+
+        rl.question(
+            "\n⚠️  Proceed with Cloudflare DNS updates? (yes/no): ",
+            answer => {
+                rl.close();
+                resolve(answer.trim().toLowerCase() === "yes");
+            }
+        );
+    });
 }
 
-/* ===================== BUILD ACCOUNTS FROM ENV ===================== */
-/*
-Expected env format:
+/* ===================== LOAD SHEET ===================== */
 
-CF_VERISENCE_TECH_DOMAIN=verisence.tech
-CF_VERISENCE_TECH_ZONE_ID=xxxx
-CF_VERISENCE_TECH_TOKEN=yyyy
-*/
-
-function buildAccountsFromEnv() {
-    const accounts = {};
-
-    for (const [key, value] of Object.entries(process.env)) {
-        if (!key.startsWith("CF_") || !key.endsWith("_DOMAIN")) continue;
-
-        const prefix = key.replace("_DOMAIN", "");
-        const domain = value.trim();
-
-        const zoneId = process.env[`${prefix}_ZONE_ID`];
-        const token = process.env[`${prefix}_TOKEN`];
-
-        if (!zoneId || !token) {
-            throw new Error(`Missing ZONE_ID or TOKEN for ${domain}`);
-        }
-
-        accounts[domain] = { zoneId, token };
-    }
-
-    if (Object.keys(accounts).length === 0) {
-        throw new Error("No Cloudflare domain configs found in env");
-    }
-
-    return accounts;
-}
-
-const ACCOUNTS = buildAccountsFromEnv();
-
-/* ===================== LOAD SHEET FROM URL ===================== */
-
-async function loadRecordsFromUrl(url) {
-    console.log("🌐 Fetching DNS sheet from URL");
+async function loadSheet(url) {
+    console.log(`🌐 Fetching DNS sheet → ${DNS_SHEET_NAME}`);
 
     const res = await axios.get(url, {
         responseType: "arraybuffer",
@@ -77,24 +59,34 @@ async function loadRecordsFromUrl(url) {
     });
 
     const workbook = XLSX.read(res.data, { type: "buffer" });
-    const sheet = workbook.Sheets[workbook.SheetNames[0]];
 
+    if (!workbook.SheetNames.includes(DNS_SHEET_NAME)) {
+        throw new Error(
+            `Sheet "${DNS_SHEET_NAME}" not found. Available: ${workbook.SheetNames.join(", ")}`
+        );
+    }
+
+    const sheet = workbook.Sheets[DNS_SHEET_NAME];
     return XLSX.utils.sheet_to_json(sheet, { defval: "" });
 }
 
-/* ===================== CHECK EXISTING RECORD ===================== */
+/* ===================== HELPERS ===================== */
 
-async function recordExists(domain, record) {
-    const { zoneId, token } = ACCOUNTS[domain];
+function normalizeName(rawName, domain) {
+    return rawName.includes(".") ? rawName : `${rawName}.${domain}`;
+}
 
+/* ===================== CHECK EXISTING ===================== */
+
+async function recordExists(zoneId, token, payload) {
     const res = await axios.get(
         `https://api.cloudflare.com/client/v4/zones/${zoneId}/dns_records`,
         {
             headers: cfHeaders(token),
             httpsAgent,
             params: {
-                type: record.type,
-                name: record.name,
+                type: payload.type,
+                name: payload.name,
             },
         }
     );
@@ -102,94 +94,153 @@ async function recordExists(domain, record) {
     if (!res.data?.success) return false;
 
     return res.data.result.some(r => {
-        if (r.type !== record.type) return false;
-        if (r.name !== record.name) return false;
-        if (r.content !== record.content) return false;
-
-        if (record.type === "MX") {
-            return Number(r.priority) === Number(record.priority);
+        if (r.type !== payload.type) return false;
+        if (r.name !== payload.name) return false;
+        if (r.content !== payload.content) return false;
+        if (payload.type === "MX") {
+            return Number(r.priority) === Number(payload.priority);
         }
-
         return true;
     });
-}
-
-/* ===================== CREATE RECORD ===================== */
-
-async function createRecord(domain, row) {
-    const type = String(row.Type || row.type).toUpperCase().trim();
-    const name = String(row.Name || "").trim();
-    const content = String(row.Content || row.content).trim();
-    const priority = row.Priority || row.priority || 10;
-
-    if (!type || !name || !content) {
-        console.warn("⚠️ Skipping invalid row:", row);
-        return;
-    }
-
-    if (TARGET_DOMAINS && !TARGET_DOMAINS.includes(domain)) {
-        return;
-    }
-
-    const account = ACCOUNTS[domain];
-    if (!account) {
-        console.warn(`⚠️ No Cloudflare account configured for ${domain}`);
-        return;
-    }
-
-    const payload = {
-        type,
-        name,
-        content,
-        ttl: 3600,
-    };
-
-    if (type === "MX") payload.priority = Number(priority);
-
-    if (await recordExists(domain, payload)) {
-        console.log(`⏭️  [${domain}] ${type} ${name} already exists`);
-        return;
-    }
-
-    console.log(`➡️  [${domain}] ${type} ${name}`);
-
-    await axios.post(
-        `https://api.cloudflare.com/client/v4/zones/${account.zoneId}/dns_records`,
-        payload,
-        {
-            headers: cfHeaders(account.token),
-            httpsAgent,
-        }
-    );
-
-    console.log(`✔️  Created ${type} ${name}`);
 }
 
 /* ===================== MAIN ===================== */
 
 (async () => {
     try {
-        console.log(`📥 Loading DNS records from URL`);
+        console.log("📥 Loading DNS records from Google Sheet");
         if (TARGET_DOMAINS) {
             console.log(`🎯 Target domains: ${TARGET_DOMAINS.join(", ")}`);
         }
 
-        const rows = await loadRecordsFromUrl(DNS_FILE_URL);
+        const rows = await loadSheet(DNS_FILE_URL);
 
-        let currentDomain = "";
+        const context = {
+            domain: "",
+            zoneId: "",
+            token: "",
+        };
+
+        const planned = [];
+
+        /* ===================== PARSE & PLAN ===================== */
 
         for (const row of rows) {
-            // IMPORTANT: inherit domain when cell is blank
-            if (row.Domain) {
-                currentDomain = row.Domain.trim();
+            if (row.Domain && row.Domain.trim() !== "") {
+                context.domain = row.Domain.trim();
+            }
+            if (row.zone_id && row.zone_id.trim() !== "") {
+                context.zoneId = row.zone_id.trim();
+            }
+            if (row.token && row.token.trim() !== "") {
+                context.token = row.token.trim();
             }
 
-            if (!currentDomain) continue;
+            if (!context.domain || !context.zoneId || !context.token) continue;
+            if (TARGET_DOMAINS && !TARGET_DOMAINS.includes(context.domain)) continue;
 
-            await createRecord(currentDomain, row);
+            const type = String(row.type || "").toUpperCase().trim();
+            const rawName = String(row.Name || "").trim();
+            const content = String(row.content || row.Content || "").trim();
+
+            if (!type || !rawName || !content) continue;
+
+            const payload = {
+                type,
+                name: normalizeName(rawName, context.domain),
+                content,
+                ttl: 3600,
+            };
+
+            if (type === "MX") {
+                payload.priority = Number(row.priority || row.Priority || 10);
+            }
+
+            planned.push({
+                domain: context.domain,
+                zoneId: context.zoneId,
+                token: context.token,
+                payload,
+            });
         }
 
-        console.log("\n🎉 DNS provisioning completed successfully");
+        /* ===================== PREVIEW ===================== */
+
+        console.log("\n🔎 PREVIEW – DNS OPERATIONS TO APPLY\n");
+
+        if (planned.length === 0) {
+            console.log("❌ No DNS records parsed from the sheet. Exiting safely.");
+            process.exit(0);
+        }
+
+        const grouped = {};
+        for (const r of planned) {
+            if (!grouped[r.domain]) grouped[r.domain] = [];
+            grouped[r.domain].push(r);
+        }
+
+        for (const [domain, records] of Object.entries(grouped)) {
+            console.log(`Domain: ${domain}`);
+            console.log(`Zone ID: ${records[0].zoneId}`);
+            console.log("Records:");
+
+            for (const r of records) {
+                const p = r.payload;
+                const extra = p.type === "MX" ? ` (priority ${p.priority})` : "";
+                console.log(
+                    `  ${p.type.padEnd(6)} ${p.name.padEnd(35)} → ${p.content}${extra}`
+                );
+            }
+            console.log("");
+        }
+
+        console.log(`Total records planned: ${planned.length}`);
+        console.log("⚠️  No changes have been made yet.");
+
+        /* ===================== CONFIRM ===================== */
+
+        const confirmed = await askConfirmation();
+
+        if (!confirmed) {
+            console.log("❌ Aborted by user. No DNS changes applied.");
+            process.exit(0);
+        }
+
+        /* ===================== APPLY ===================== */
+
+        console.log("\n🚀 Applying DNS changes to Cloudflare\n");
+
+        for (const r of planned) {
+            try {
+                if (await recordExists(r.zoneId, r.token, r.payload)) {
+                    console.log(`⏭️  ${r.payload.type} ${r.payload.name} already exists`);
+                    continue;
+                }
+
+                await axios.post(
+                    `https://api.cloudflare.com/client/v4/zones/${r.zoneId}/dns_records`,
+                    r.payload,
+                    {
+                        headers: cfHeaders(r.token),
+                        httpsAgent,
+                    }
+                );
+
+                console.log(`✔️  Created ${r.payload.type} ${r.payload.name}`);
+            } catch (err) {
+                console.error(`❌ Failed ${r.payload.type} ${r.payload.name}`);
+                const errors = err.response?.data?.errors;
+                if (Array.isArray(errors)) {
+                    errors.forEach(e =>
+                        console.error(`   → Cloudflare error: ${e.message}`)
+                    );
+                } else {
+                    console.error(`   → ${err.message}`);
+                }
+            }
+        }
+
+        console.log("\n🎉 DNS provisioning completed");
     } catch (err) {
         console.error("❌ Fatal:", err.message);
         process.exit(1);
