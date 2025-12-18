@@ -1,10 +1,10 @@
-import dotenv from "dotenv";
-import axios from "axios";
-import XLSX from "xlsx";
-import https from "https";
-import readline from "readline";
+import dotenv from 'dotenv';
+import axios from 'axios';
+import XLSX from 'xlsx';
+import https from 'https';
 
-dotenv.config();
+
+dotenv.config()
 
 /* ===================== CONFIG ===================== */
 
