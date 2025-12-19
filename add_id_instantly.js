@@ -7,7 +7,7 @@ dotenv.config();
 
 /* ---------------- CONFIG ---------------- */
 
-const SHEET_URL = process.env.DNS_SHEET_URL
+const SHEET_URL = process.env.DNS_FILE_URL
 const SHEET_NAME = process.env.INSTANTLY_SHEET_NAME || "Sheet6";
 
 /* ---------------- CLI ---------------- */
