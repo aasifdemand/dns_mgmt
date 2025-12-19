@@ -1,118 +1,182 @@
-import dotenv from "dotenv";
 import { chromium } from "playwright";
+import axios from "axios";
+import XLSX from "xlsx";
 import readline from "readline";
-import fs from "fs";
-
+import dotenv from "dotenv";
 dotenv.config();
 
+/* ---------------- CONFIG ---------------- */
+
+const SHEET_URL = process.env.DNS_SHEET_URL
+const SHEET_NAME = process.env.INSTANTLY_SHEET_NAME || "Sheet6";
+
 /* ---------------- CLI ---------------- */
+
 const rl = readline.createInterface({
     input: process.stdin,
-    output: process.stdout,
+    output: process.stdout
 });
-const ask = (q) => new Promise((r) => rl.question(q, (a) => r(a.trim())));
+const ask = q => new Promise(r => rl.question(q, a => r(a.trim())));
+
+/* ---------------- HELPERS ---------------- */
+
+const cap = s => s.charAt(0).toUpperCase() + s.slice(1);
+
+function parseName(email) {
+    const local = email.split("@")[0];
+    const parts = local.split(/[._-]/);
+    return {
+        first: cap(parts[0] || "User"),
+        last: cap(parts[1] || "Account")
+    };
+}
+
+async function forceFill(page, selector, value) {
+    await page.waitForSelector(selector, { timeout: 60000 });
+    await page.evaluate(
+        ({ selector, value }) => {
+            const el = document.querySelector(selector);
+            el.focus();
+            el.value = value;
+            el.dispatchEvent(new Event("input", { bubbles: true }));
+            el.dispatchEvent(new Event("change", { bubbles: true }));
+            el.blur();
+        },
+        { selector, value }
+    );
+}
+
+/* ---------------- LOAD INSTANTLY CREDS ---------------- */
+
+async function loadInstantlyCreds() {
+    const res = await axios.get(SHEET_URL, { responseType: "arraybuffer" });
+    const wb = XLSX.read(res.data, { type: "buffer" });
+    const sheet = wb.Sheets[SHEET_NAME];
+    const rows = XLSX.utils.sheet_to_json(sheet, { defval: "" });
+
+    const row = rows[0];
+    const email = row.INSTANTLY_EMAIL;
+    const password = row.INSTANTLY_PASSWORD;
+
+    if (!email || !password) {
+        throw new Error("INSTANTLY_EMAIL / INSTANTLY_PASSWORD missing in Sheet6");
+    }
+
+    return { email, password };
+}
+
+/* ---------------- LOGIN ---------------- */
+
+async function login(page, creds) {
+    await page.goto("https://app.instantly.ai/auth/login", {
+        waitUntil: "domcontentloaded"
+    });
+
+    await forceFill(page, "input[type=email]", creds.email);
+    await forceFill(page, "input[type=password]", creds.password);
+    await page.click("button[type=submit]");
+
+    await Promise.race([
+        page.waitForSelector("input[type=email]", { state: "detached" }),
+        page.waitForSelector("text=/accounts|campaigns/i")
+    ]);
+}
+
+/* ---------------- FLOW ---------------- */
+
+async function navigateToConnect(page) {
+    await page.goto("https://app.instantly.ai/app/accounts", {
+        waitUntil: "domcontentloaded"
+    });
+
+    await page.locator("text=Add New").click();
+    await page.waitForURL("**/app/account/connect");
+
+    await page.locator("text=/imap\\s*\\/\\s*smtp/i").click();
+    await page.locator("text=/single account/i").click();
+
+    await page.waitForURL("**/account/connect?provider=custom");
+}
+
+/* ---------------- EMAIL SCREEN ---------------- */
+
+async function fillEmailScreen(page, email) {
+    const { first, last } = parseName(email);
+
+    await forceFill(page, "input[placeholder='First Name']", first);
+    await forceFill(page, "input[placeholder='Last Name']", last);
+    await forceFill(
+        page,
+        "input[placeholder='Email address to connect']",
+        email
+    );
+
+    await page.locator("button:has-text('Next')").click();
+}
+
+/* ---------------- IMAP ---------------- */
+
+async function fillImap(page, email, imapPass) {
+    const domain = email.split("@")[1];
+
+    await forceFill(page, "input[placeholder='IMAP Username']", email);
+    await forceFill(page, "input[placeholder='IMAP Password']", imapPass);
+    await forceFill(
+        page,
+        "input[placeholder='imap.website.com']",
+        `mail.${domain}`
+    );
+
+    await page.locator("button:has-text('Next')").click();
+}
+
+/* ---------------- SMTP ---------------- */
+
+async function fillSmtp(page, email, smtpPass) {
+    const domain = email.split("@")[1];
+
+    await forceFill(page, "input[placeholder='SMTP Username']", email);
+    await forceFill(page, "input[placeholder='SMTP Password']", smtpPass);
+    await forceFill(
+        page,
+        "input[placeholder='smtp.website.com']",
+        `postal.${domain}`
+    );
+
+    await page.locator("button:has-text('Connect Account')").click();
+}
+
+/* ---------------- MAIN ---------------- */
 
 (async () => {
-    let browser;
-
     try {
-        console.log("🚀 Instantly Inbox Automation");
-        console.log("=".repeat(50));
+        const email = await ask("Enter email to connect: ");
+        const imapPass = await ask("Enter IMAP password: ");
+        const smtpPass = await ask("Enter SMTP password: ");
+        rl.close();
 
-        const email = await ask("Warmup email: ");
-        const domain = email.split("@")[1];
-        const imapPassword = await ask("IMAP password: ");
-        const smtpPassword = await ask("SMTP password: ");
+        const instantlyCreds = await loadInstantlyCreds();
 
-        /* ---------- Launch Browser ---------- */
-        browser = await chromium.launch({
-            headless: process.env.HEADLESS === "true",
+        const browser = await chromium.launch({
+            headless: false,
+            slowMo: 200
         });
 
-        const context = await browser.newContext({
-            userAgent:
-                "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 " +
-                "(KHTML, like Gecko) Chrome/122.0.0.0 Safari/537.36",
-        });
+        const page = await browser.newPage();
 
-        const page = await context.newPage();
+        await login(page, instantlyCreds);
+        await navigateToConnect(page);
+        await fillEmailScreen(page, email);
+        await fillImap(page, email, imapPass);
+        await fillSmtp(page, email, smtpPass);
 
-        /* ---------- LOGIN ---------- */
-        console.log("🔐 Logging into Instantly...");
-        await page.goto("https://app.instantly.ai/auth/login", {
-            waitUntil: "domcontentloaded",
-            timeout: 60000,
-        });
+        console.log("🎉 Account connected successfully");
 
-        await page.waitForSelector('input[type="email"]', { timeout: 60000 });
-        await page.fill('input[type="email"]', process.env.INSTANTLY_EMAIL);
-        await page.fill('input[type="password"]', process.env.INSTANTLY_PASSWORD);
-        await page.click('button[type="submit"]');
-
-        await page.waitForURL("**/app/**", { timeout: 60000 });
-        console.log("✅ Login successful");
-
-        /* ---------- ACTIVATE WORKSPACE (REAL UI HYDRATION) ---------- */
-        console.log("📂 Opening Accounts page to activate workspace...");
-        await page.goto("https://app.instantly.ai/app/accounts", {
-            waitUntil: "domcontentloaded",
-            timeout: 60000,
-        });
-
-        // Wait for React to hydrate (generic but reliable)
-        await page.waitForFunction(() => {
-            // page is on /app/accounts and DOM has populated
-            return (
-                location.pathname.includes("/app/accounts") &&
-                document.querySelectorAll("div").length > 50
-            );
-        }, { timeout: 60000 });
-
-        // Extra buffer for hooks/state
-        await page.waitForTimeout(5000);
-
-        /* ---------- ADD INBOX (PAGE CONTEXT FETCH) ---------- */
-        console.log("📨 Adding inbox via page context…");
-
-        const result = await page.evaluate(async (payload) => {
-            const res = await fetch("/api-alt/account/connect", {
-                method: "POST",
-                headers: { "Content-Type": "application/json" },
-                body: JSON.stringify(payload),
-                credentials: "include", // 🔑 critical
-            });
-            return res.json();
-        }, {
-            firstName: email.split("@")[0],
-            lastName: "Inbox",
-            provider: "custom_imap_smtp",
-            email,
-
-            imap_username: email,
-            imap_password: imapPassword,
-            imap_host: `mail.${domain}`,
-            imap_port: 993,
-
-            smtp_username: email,
-            smtp_password: smtpPassword,
-            smtp_host: `postal.${domain}`,
-            smtp_port: 587,
-        });
-
-        const file = `instantly_${email.replace(/[@.]/g, "_")}.json`;
-        fs.writeFileSync(file, JSON.stringify(result, null, 2));
-
-        if (result?.error) {
-            throw new Error(JSON.stringify(result));
-        }
-
-        console.log("🎉 Inbox added successfully");
-        console.log(`📄 Saved: ${file}`);
+        // ✅ CLOSE BROWSER AFTER SUCCESS
+        await page.waitForTimeout(3000);
+        await browser.close();
 
     } catch (err) {
-        console.error("❌ Failed:", err.message);
-    } finally {
-        rl.close();
-        if (browser) await browser.close();
+        console.error("❌ Automation failed:", err.message);
     }
 })();
