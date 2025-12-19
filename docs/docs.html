@@ -1,0 +1,252 @@
+<!DOCTYPE html>
+<html lang="en">
+
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Workflow Documentation: DNS and Postal Installation</title>
+    <link rel="stylesheet" href="docs.css">
+</head>
+
+<body>
+    <div class="header">
+        <h1>Workflow Documentation</h1>
+        <p>Complete guide for Cloudflare DNS and Postal Mail Server installation</p>
+    </div>
+
+    <div class="container">
+        <!-- Section 1: Add Basic Records in Cloudflare -->
+        <div class="section">
+            <h2>Add basic records in Cloudflare</h2>
+
+            <div class="step">
+                <h3>Step 1: Preparation of the DNS records in the xlsx sheet</h3>
+                <p>Prepare the first row for Cloudflare as:</p>
+
+                <div class="table-container">
+                    <table>
+                        <thead>
+                            <tr>
+                                <th>Domain</th>
+                                <th>Type</th>
+                                <th>Name</th>
+                                <th>Content</th>
+                                <th>Priority</th>
+                                <th>zone_id</th>
+                                <th>token</th>
+                            </tr>
+                        </thead>
+                        <tbody>
+                            <tr>
+                                <td>example.com</td>
+                                <td>A</td>
+                                <td>@</td>
+                                <td>192.0.2.1</td>
+                                <td>-</td>
+                                <td>abc123...</td>
+                                <td>CF_Token_1</td>
+                            </tr>
+                        </tbody>
+                    </table>
+                </div>
+
+                <p>Fill below rows with the correct information under the respective columns.</p>
+
+                <p>Go to the Cloudflare dashboard and fetch the zone_id and the access token keys.</p>
+
+                <p>Click on <strong>File → Share → Share with Others → Grant access to everyone with the link → copy
+                        this link → paste this env.</strong></p>
+            </div>
+
+            <div class="step">
+                <h3>Step 2: ENV preparation</h3>
+
+                <p>Edit env and add the correct version of the google sheet url that has access to "anyone with the
+                    link", and add it to the value DNS_FILE_URL key. Also make sure that the correct sheets link returns
+                    the xlsx format not the html.</p>
+
+                <div class="code-block">
+                    DNS_FILE_URL="your_google_sheet_url_here"
+                </div>
+
+                <p>Edit env variable Target_Domains and add the list of the domains whose records are to be added into
+                    the Cloudflare.</p>
+
+                <div class="code-block">
+                    Target_Domains="domain1.com,domain2.com,domain3.com"
+                </div>
+
+                <p>Edit env variable DNS_SHEET_NAME and add the sheet name value to it, example: Sheet1</p>
+
+                <div class="code-block">
+                    DNS_SHEET_NAME="Sheet1"
+                </div>
+            </div>
+
+            <div class="step">
+                <h3>Step 3: Finally, Run the Node script as:</h3>
+
+                <div class="code-block command">
+                    node add_sheets_cf.js
+                </div>
+
+                <div class="note">
+                    <p><strong>Note:</strong> Make sure you have Node.js installed and all dependencies are properly
+                        configured before running the script.</p>
+                </div>
+            </div>
+        </div>
+
+        <!-- Section 2: Postal Installation -->
+        <div class="section">
+            <h2>Postal Installation</h2>
+
+            <div class="step">
+                <h3>Step 1: Prepare the sheet for the SSH credentials</h3>
+                <p>Add the first row as:</p>
+
+                <div class="table-container">
+                    <table>
+                        <thead>
+                            <tr>
+                                <th>POSTAL_DOMAIN</th>
+                                <th>HOST</th>
+                                <th>SSH_USER</th>
+                                <th>SSH_PASSWORD</th>
+                                <th>CF_ZONE_ID</th>
+                                <th>CF_TOKEN</th>
+                            </tr>
+                        </thead>
+                        <tbody>
+                            <tr>
+                                <td>postal.yourdomain.com</td>
+                                <td>192.168.1.100</td>
+                                <td>root</td>
+                                <td>your_password</td>
+                                <td>abc123...</td>
+                                <td>CF_Token_1</td>
+                            </tr>
+                        </tbody>
+                    </table>
+                </div>
+
+                <p>Next, add the correct values in the 2nd respective row.</p>
+            </div>
+
+            <div class="step">
+                <h3>Step 2: Add the env variables:</h3>
+
+                <div class="code-block">
+                    TARGET_POSTAL_DOMAIN = postal.yourdomain.com
+                </div>
+
+                <div class="code-block">
+                    POSTAL_SHEET_NAME = Sheet2
+                </div>
+            </div>
+
+            <div class="step">
+                <h3>Step 3: Run the script:</h3>
+
+                <div class="code-block command">
+                    node postal_install.js
+                </div>
+            </div>
+
+            <div class="step">
+                <h3>Step 4: Wait for the SSL connection</h3>
+                <p>If the connection is successful, then it prompts you for:</p>
+                <ul>
+                    <li>Admin email</li>
+                    <li>First_name</li>
+                    <li>Last_name</li>
+                    <li>Initial_password</li>
+                </ul>
+                <p>These are for the postal make-user command to run automatically later.</p>
+            </div>
+
+            <div class="step">
+                <h3>Step 5: Wait till all commands are executed</h3>
+                <p>Your postal mail server will be live, if SSL generation doesn't create any errors, like exceed the
+                    limit for certificate generations etc.</p>
+            </div>
+
+            <div class="step">
+                <h3>Step 6: Login to the URL generated by the script</h3>
+                <div class="code-block">
+                    https://postal.yourdomain.com
+                </div>
+            </div>
+
+            <div class="step">
+                <h3>Step 7: Run the organization creation script</h3>
+
+                <div class="code-block command">
+                    node create_postal_org.js
+                </div>
+
+                <p>Refresh the postal UI and select the organization, then run the mail server creation script:</p>
+
+                <div class="code-block command">
+                    node create_postal_mail_server.js
+                </div>
+
+                <p>Set env variables as:</p>
+                <div class="code-block">
+                    SERVER_NAME = yourdomain.com
+                </div>
+                <div class="code-block">
+                    SERVER_MODE = live
+                </div>
+            </div>
+
+            <div class="step">
+                <h3>STEP 8: Add domain to postal mail server</h3>
+                <p>Refresh the page and you can see the mail server has been set up, then run the following script for
+                    adding the domain in the postal mail server:</p>
+
+                <div class="code-block command">
+                    node add_domain_postal_cf.js
+                </div>
+            </div>
+
+            <div class="step">
+                <h3>STEP 9: Create server credentials</h3>
+                <p>Run the following script:</p>
+
+                <div class="code-block command">
+                    node create_credentials_postal.js
+                </div>
+
+                <p>Set env variables as:</p>
+                <div class="code-block">
+                    CREDENTIALS_BASE_NAME = serververisence // for example
+                </div>
+                <div class="code-block">
+                    CREDENTIALS_COUNT = 1
+                </div>
+                <div class="code-block">
+                    HOLD_MESSAGES = true
+                </div>
+
+                <p>Once you run the script, the server will download the xlsx file along with the generated credential.
+                </p>
+            </div>
+
+            <div class="step">
+                <h3>Step 10: Add IP Pool to Postal</h3>
+                <p>Run the script as:</p>
+
+                <div class="code-block command">
+                    node add_ip_pool_postal.js
+                </div>
+
+                <div class="warning">
+                    <p><strong>Important:</strong> Make sure to use sheet 4 and sheet 2 combinations.</p>
+                </div>
+            </div>
+        </div>
+    </div>
+</body>
+
+</html>
