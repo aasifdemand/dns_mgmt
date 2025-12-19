@@ -1,123 +1,150 @@
-require("dotenv").config();
-const axios = require("axios");
-const https = require("https");
+import axios from "axios";
+import XLSX from "xlsx";
+import https from "https";
+import dotenv from "dotenv"
 
-// ===============================
-// 🌍 CONFIG FROM .env
-// ===============================
-const PANEL_URL = process.env.AAPANEL_GETURL; // https://IP:PORT/plugin?action=a&name=mail_sys
-const COOKIE = process.env.AAPANEL_COOKIE;
-const X_HTTP_TOKEN = process.env.AAPANEL_TOKEN;
-const DOMAIN = process.env.MAIL_DOMAIN;
 
-// 🌩 CLOUDFLARE CONFIG
-const CF_ZONE_ID = process.env.CLOUDFLARE_ZONE_ID;
-const CF_TOKEN = process.env.CLOUDFLARE_TOKEN;
+dotenv.config()
 
-// ===============================
-// 🔐 ALLOW SELF-SIGNED SSL
-// ===============================
+/* ================= HTTPS ================= */
 const httpsAgent = new https.Agent({ rejectUnauthorized: false });
 
-// ===============================
-// 📥 FETCH DOMAIN INFO FROM AAPANEL
-// ===============================
-async function getDomainDNS(domain) {
+/* ================= CONFIG ================= */
+const SHEET_URL = process.env.DNS_FILE_URL
+const SHEET_PANEL = process.env.AAPANEL_SHEET_NAME
+
+/* ================= FETCH DOMAIN INFO ================= */
+async function getDomainFromAaPanel({ getUrl, cookie, token, domain }) {
     try {
-        const url = `${PANEL_URL}&s=get_domain_dns`;
+        const res = await axios.post(
+            getUrl,
+            null,
+            {
+                httpsAgent,
+                headers: {
+                    "x-http-token": token,
+                    Cookie: cookie,
+                },
+            }
+        );
 
-        const form = new URLSearchParams();
-        form.append("domain", domain);
+        console.log("\n📌 aaPanel RAW response:");
+        console.dir(res.data, { depth: null });
 
-        const res = await axios.post(url, form.toString(), {
-            httpsAgent,
-            headers: {
-                "Content-Type": "application/x-www-form-urlencoded; charset=UTF-8",
-                "x-http-token": X_HTTP_TOKEN,
-                Cookie: COOKIE,
-            },
-        });
+        if (
+            !res.data?.status ||
+            !res.data?.msg ||
+            !Array.isArray(res.data.msg.data)
+        ) {
+            return null;
+        }
 
-        console.log("\n📌 RAW Response:", JSON.stringify(res.data, null, 4));
+        return res.data.msg.data.find(
+            d => d.domain === domain
+        ) || null;
 
-        if (!res.data?.status || !res.data?.msg?.data?.length) return null;
-
-        const row = res.data.msg.data[0];
-        console.log("\n📌 Parsed domain info:", JSON.stringify(row, null, 4));
-
-        return {
-            dkim: row.dkim_value || null,
-            dmarc: row.dmarc_value || null,
-            spf: row.spf_value || null,
-            spfStatus: row.spf_status,
-        };
     } catch (err) {
-        console.error("\n❌ aaPanel DNS Error:", err.response?.data || err.message);
+        console.error("\n❌ aaPanel Error:");
+        console.error(err.response?.data || err.message);
         return null;
     }
 }
 
-// ===============================
-// ☁️ PUSH ONLY DMARC TO CLOUDFLARE
-// ===============================
-async function pushDMARCToCloudflare(dmarcValue) {
+/* ================= PUSH DMARC TO CLOUDFLARE ================= */
+async function pushDMARCToCloudflare({ domain, dmarc, zoneId, apiToken }) {
     try {
-        // ✨ Ensure DMARC content has double quotes
-        let content = dmarcValue.trim();
-        if (!content.startsWith(`"`)) content = `"${content}`;
-        if (!content.endsWith(`"`)) content = `${content}"`;
+        let content = dmarc.trim();
+        if (!content.startsWith('"')) content = `"${content}`;
+        if (!content.endsWith('"')) content = `${content}"`;
 
         const payload = {
             type: "TXT",
-            name: `_dmarc.${DOMAIN}`,
+            name: `_dmarc.${domain}`,
             content,
             ttl: 3600,
         };
 
-        console.log(`➡️ Adding DMARC to Cloudflare: ${payload.name} = ${payload.content}`);
+        console.log(`➡️ Adding DMARC to Cloudflare`);
+        console.log(`${payload.name} = ${payload.content}`);
 
         const res = await axios.post(
-            `https://api.cloudflare.com/client/v4/zones/${CF_ZONE_ID}/dns_records`,
+            `https://api.cloudflare.com/client/v4/zones/${zoneId}/dns_records`,
             payload,
             {
                 headers: {
-                    Authorization: `Bearer ${CF_TOKEN}`,
+                    Authorization: `Bearer ${apiToken}`,
                     "Content-Type": "application/json",
                 },
             }
         );
 
-        if (res.data.success) {
-            console.log(`🎉 DMARC added to Cloudflare successfully!`);
+        if (res.data?.success) {
+            console.log("🎉 DMARC added to Cloudflare successfully!");
         } else {
-            console.log(`⚠️ Could not add DMARC:`, res.data);
+            console.log("⚠️ Cloudflare response:");
+            console.dir(res.data, { depth: null });
         }
-    } catch (e) {
-        console.error(`❌ Cloudflare DMARC Error:`, e.response?.data || e.message);
+    } catch (err) {
+        console.error("\n❌ Cloudflare Error:");
+        console.error(err.response?.data || err.message);
     }
 }
 
-// ===============================
-// ▶ MAIN
-// ===============================
+/* ================= MAIN ================= */
 (async () => {
-    const result = await getDomainDNS(DOMAIN);
+    console.log("📥 Reading Sheet3 config...");
 
-    console.log("\n🎯 Extracted Records:");
-    if (!result) return console.log("❌ No DNS data found!");
+    const sheetRes = await axios.get(SHEET_URL, {
+        responseType: "arraybuffer",
+        httpsAgent,
+    });
 
-    const { dmarc } = result;
+    const wb = XLSX.read(sheetRes.data);
+    const rows = XLSX.utils.sheet_to_json(
+        wb.Sheets[SHEET_PANEL],
+        { header: 1 }
+    );
 
-    // ❌ Skip DKIM and SPF completely ✔️
-    console.log("🚫 Skipping DKIM and SPF sync");
+    const row = rows[1];
+    if (!row) throw new Error("Sheet3 is empty");
 
-    // 🟨 DMARC
-    if (dmarc) {
-        console.log(`🟨 DMARC found. Adding to Cloudflare...`);
-        await pushDMARCToCloudflare(dmarc);
-    } else {
-        console.log(`❌ DMARC: Not found`);
+    const GET_URL = row[1];   // s=get_domains
+    const COOKIE = row[2];
+    const TOKEN = row[3];
+    const DOMAIN = row[4];
+    const CF_ZONE_ID = row[7];
+    const CF_API_TOKEN = row[8];
+
+    console.log(`📧 Domain: ${DOMAIN}`);
+
+    const domainInfo = await getDomainFromAaPanel({
+        getUrl: GET_URL,
+        cookie: COOKIE,
+        token: TOKEN,
+        domain: DOMAIN,
+    });
+
+    if (!domainInfo) {
+        console.log("❌ Domain not found in aaPanel");
+        return;
     }
 
-    console.log("\n🌍 DONE syncing DMARC ➝ Cloudflare 🚀");
+    console.log("\n🎯 Domain Info:");
+    console.log(domainInfo);
+
+    console.log("🚫 Skipping SPF & DKIM");
+
+    if (domainInfo.dmarc_value) {
+        console.log("🟨 DMARC found → syncing to Cloudflare...");
+        await pushDMARCToCloudflare({
+            domain: DOMAIN,
+            dmarc: domainInfo.dmarc_value,
+            zoneId: CF_ZONE_ID,
+            apiToken: CF_API_TOKEN,
+        });
+    } else {
+        console.log("❌ DMARC not found");
+    }
+
+    console.log("\n✅ DONE — DMARC synced successfully");
 })();
