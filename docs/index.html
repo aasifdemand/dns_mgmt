@@ -5,520 +5,539 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Workflow Documentation: DNS and Postal Installation</title>
-    <link rel="stylesheet" href="index.css">
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+    <link rel="stylesheet" href="styles.css">
 </head>
 
 <body>
-    <div class="header">
-        <h1>Workflow Documentation</h1>
-        <p>Complete guide for Cloudflare DNS and Postal Mail Server installation</p>
-    </div>
-
     <div class="container">
-        <!-- Section 1: Add Basic Records in Cloudflare -->
-        <div class="section section-orange">
-            <h2>Add basic records in Cloudflare</h2>
-
-            <div class="step">
-                <h3>Step 1: Preparation of the DNS records in the xlsx sheet</h3>
-                <p>Prepare the first row for Cloudflare as:</p>
-
-                <div class="table-container">
-                    <table>
-                        <thead>
-                            <tr>
-                                <th>Domain</th>
-                                <th>Type</th>
-                                <th>Name</th>
-                                <th>Content</th>
-                                <th>Priority</th>
-                                <th>zone_id</th>
-                                <th>token</th>
-                            </tr>
-                        </thead>
-                        <tbody>
-                            <tr>
-                                <td>example.com</td>
-                                <td>A</td>
-                                <td>@</td>
-                                <td>192.0.2.1</td>
-                                <td>-</td>
-                                <td>abc123...</td>
-                                <td>CF_Token_1</td>
-                            </tr>
-                        </tbody>
-                    </table>
-                </div>
-
-                <p>Fill below rows with the correct information under the respective columns.</p>
-
-                <p>Go to the Cloudflare dashboard and fetch the zone_id and the access token keys.</p>
-
-                <p>Click on <strong>File → Share → Share with Others → Grant access to everyone with the link → copy
-                        this link → paste this env.</strong></p>
+        <!-- Sidebar Navigation -->
+        <aside class="sidebar">
+            <div class="sidebar-header">
+                <h1>Workflow Documentation</h1>
+                <p>Complete guide for Cloudflare DNS and Postal Mail Server installation</p>
             </div>
 
-            <div class="step">
-                <h3>Step 2: ENV preparation</h3>
-
-                <p>Edit env and add the correct version of the google sheet url that has access to "anyone with the
-                    link", and add it to the value DNS_FILE_URL key. Also make sure that the correct sheets link returns
-                    the xlsx format not the html.</p>
-
-                <div class="code-block">
-                    DNS_FILE_URL="your_google_sheet_url_here"
-                </div>
-
-                <p>Edit env variable Target_Domains and add the list of the domains whose records are to be added into
-                    the Cloudflare.</p>
-
-                <div class="code-block">
-                    Target_Domains="domain1.com,domain2.com,domain3.com"
-                </div>
-
-                <p>Edit env variable DNS_SHEET_NAME and add the sheet name value to it, example: Sheet1</p>
-
-                <div class="code-block">
-                    DNS_SHEET_NAME="Sheet1"
-                </div>
-            </div>
-
-            <div class="step">
-                <h3>Step 3: Finally, Run the Node script as:</h3>
-
-                <div class="code-block command">
-                    node add_sheets_cf.js
-                </div>
-
-                <div class="note">
-                    <p><strong>Note:</strong> Make sure you have Node.js installed and all dependencies are properly
-                        configured before running the script.</p>
-                </div>
-            </div>
-        </div>
-
-        <!-- Section 2: Postal Installation -->
-        <div class="section section-blue">
-            <h2>Postal Installation</h2>
-
-            <div class="step">
-                <h3>Step 1: Prepare the sheet for the SSH credentials</h3>
-                <p>Add the first row as:</p>
-
-                <div class="table-container">
-                    <table>
-                        <thead>
-                            <tr>
-                                <th>POSTAL_DOMAIN</th>
-                                <th>HOST</th>
-                                <th>SSH_USER</th>
-                                <th>SSH_PASSWORD</th>
-                                <th>CF_ZONE_ID</th>
-                                <th>CF_TOKEN</th>
-                            </tr>
-                        </thead>
-                        <tbody>
-                            <tr>
-                                <td>postal.yourdomain.com</td>
-                                <td>192.168.1.100</td>
-                                <td>root</td>
-                                <td>your_password</td>
-                                <td>abc123...</td>
-                                <td>CF_Token_1</td>
-                            </tr>
-                        </tbody>
-                    </table>
-                </div>
-
-                <p>Next, add the correct values in the 2nd respective row.</p>
-            </div>
-
-            <div class="step">
-                <h3>Step 2: Add the env variables:</h3>
-
-                <div class="code-block">
-                    TARGET_POSTAL_DOMAIN = postal.yourdomain.com
-                </div>
-
-                <div class="code-block">
-                    POSTAL_SHEET_NAME = Sheet2
-                </div>
-            </div>
-
-            <div class="step">
-                <h3>Step 3: Run the script:</h3>
-
-                <div class="code-block command">
-                    node postal_install.js
-                </div>
-            </div>
-
-            <div class="step">
-                <h3>Step 4: Wait for the SSL connection</h3>
-                <p>If the connection is successful, then it prompts you for:</p>
-                <ul>
-                    <li>Admin email</li>
-                    <li>First_name</li>
-                    <li>Last_name</li>
-                    <li>Initial_password</li>
+            <div class="nav-section">
+                <h3>Main Sections</h3>
+                <ul class="nav-links">
+                    <li><a href="#cloudflare-dns" class="active" data-tab="cloudflare-dns"><i class="fas fa-cloud"></i>
+                            Cloudflare DNS</a></li>
+                    <li><a href="#postal-installation" data-tab="postal-installation"><i class="fas fa-server"></i>
+                            Postal Installation</a></li>
+                    <li><a href="#aapanel-automation" data-tab="aapanel-automation"><i class="fas fa-cogs"></i> aaPanel
+                            Automation</a></li>
+                    <li><a href="#instantly-integration" data-tab="instantly-integration"><i class="fas fa-bolt"></i>
+                            Add ID Instantly</a></li>
                 </ul>
-                <p>These are for the postal make-user command to run automatically later.</p>
             </div>
 
-            <div class="step">
-                <h3>Step 5: Wait till all commands are executed</h3>
-                <p>Your postal mail server will be live, if SSL generation doesn't create any errors, like exceed the
-                    limit for certificate generations etc.</p>
+
+
+
+        </aside>
+
+        <!-- Main Content Area -->
+        <main class="main-content">
+            <!-- Content Tabs -->
+            <div class="content-tabs">
+                <div class="tab active" data-tab="cloudflare-dns"><i class="fas fa-cloud"></i> Cloudflare DNS Setup
+                </div>
+                <div class="tab" data-tab="postal-installation"><i class="fas fa-server"></i> Postal Installation</div>
+                <div class="tab" data-tab="aapanel-automation"><i class="fas fa-cogs"></i> aaPanel Automation</div>
+                <div class="tab" data-tab="instantly-integration"><i class="fas fa-bolt"></i> Add ID Instantly</div>
             </div>
 
-            <div class="step">
-                <h3>Step 6: Login to the URL generated by the script</h3>
-                <div class="code-block">
-                    https://postal.yourdomain.com
-                </div>
-            </div>
-
-            <div class="step">
-                <h3>Step 7: Run the organization creation script</h3>
-
-                <div class="code-block command">
-                    node create_postal_org.js
+            <!-- Tab 1: Cloudflare DNS -->
+            <section id="cloudflare-dns" class="tab-content active">
+                <div class="section-header">
+                    <h2>Cloudflare DNS Setup</h2>
+                    <p>Automate DNS record management in Cloudflare using Google Sheets as a data source</p>
                 </div>
 
-                <p>Refresh the postal UI and select the organization, then run the mail server creation script:</p>
-
-                <div class="code-block command">
-                    node create_postal_mail_server.js
-                </div>
-
-                <p>Set env variables as:</p>
-                <div class="code-block">
-                    SERVER_NAME = yourdomain.com
-                </div>
-                <div class="code-block">
-                    SERVER_MODE = live
-                </div>
-            </div>
-
-            <div class="step">
-                <h3>STEP 8: Add domain to postal mail server</h3>
-                <p>Refresh the page and you can see the mail server has been set up, then run the following script for
-                    adding the domain in the postal mail server:</p>
-
-                <div class="code-block command">
-                    node add_domain_postal_cf.js
-                </div>
-            </div>
-
-            <div class="step">
-                <h3>STEP 9: Create server credentials</h3>
-                <p>Run the following script:</p>
-
-                <div class="code-block command">
-                    node create_credentials_postal.js
-                </div>
-
-                <p>Set env variables as:</p>
-                <div class="code-block">
-                    CREDENTIALS_BASE_NAME = serververisence // for example
-                </div>
-                <div class="code-block">
-                    CREDENTIALS_COUNT = 1
-                </div>
-                <div class="code-block">
-                    HOLD_MESSAGES = true
-                </div>
-
-                <p>Once you run the script, the server will download the xlsx file along with the generated credential.
-                </p>
-            </div>
-
-            <div class="step">
-                <h3>Step 10: Add IP Pool to Postal</h3>
-                <p>Run the script as:</p>
-
-                <div class="code-block command">
-                    node add_ip_pool_postal.js
-                </div>
-
-                <div class="warning">
-                    <p><strong>Important:</strong> Make sure to use sheet 4 and sheet 2 combinations.</p>
-                </div>
-            </div>
-        </div>
-
-        <!-- Section 3: aaPanel Mail Server Automation -->
-        <div class="section section-green">
-            <h2>aaPanel Mail Server Automation</h2>
-
-            <div class="overview">
-                <h3>Overview</h3>
-                <p>This suite of scripts automates mail server setup on aaPanel with Cloudflare DNS integration and mailbox management. The system reads configuration from Google Sheets and automates the entire mail server provisioning process.</p>
-            </div>
-
-            <!-- Script 1: Domain Addition to aaPanel -->
-            <div class="step">
-                <h3>Script 1: domain_add_aapanel.js:</h3>
-                <p><strong>Purpose:</strong> Adds mail domains to aaPanel mail server.</p>
-                <p><strong>Input:</strong> Accepts it from the sheet, Sheet3</p>
-                <p><strong>Output:</strong> Domain added to aaPanel mail system.</p>
-            </div>
-
-            <!-- Script 2: SSL Certificate Installation -->
-            <div class="step">
-                <h3>Script 2: add_ssl_aapanel.js:</h3>
-                <p><strong>Purpose:</strong> Requests and installs SSL certificates using DNS validation.</p>
-                <p><strong>Input:</strong> Domain from .env, reads DNS TXT requirements from aaPanel.</p>
-                <p><strong>Output:</strong> SSL certificate installed on mail domain.</p>
-            </div>
-
-            <!-- Script 3: DMARC Record Sync -->
-            <div class="step">
-                <h3>Script 3: aapanel_dmarc_cf.js:</h3>
-                <p><strong>Purpose:</strong> Syncs DMARC records from aaPanel to Cloudflare.</p>
-                <p><strong>Input:</strong> DMARC values from aaPanel DNS info.</p>
-                <p><strong>Output:</strong> DMARC TXT records added to Cloudflare DNS.</p>
-            </div>
-
-            <!-- Script-by-script Details -->
-            <div class="step">
-                <h3>SCRIPT-BY-SCRIPT DETAILS:</h3>
-                
-                <h4>1. Domain_add_aapanel.js:</h4>
-                <div class="code-block">
-AAPANEL_ADDURL=https://IP:PORT/plugin?action=a&name=mail_sys&s=add_domain
-AAPANEL_COOKIE=your_cookie_here
-AAPANEL_TOKEN=your_token_here
-MAIL_DOMAIN=example.com
-MAIL_A_RECORD=mail
-MAIL_SERVER_IP=1.2.3.4
-                </div>
-
-                <h4>2. add_ssl_aapanel.js</h4>
-                <div class="code-block">
-AAPANEL_BASE_URL=https://IP:PORT
-AAPANEL_COOKIE=your_cookie
-AAPANEL_TOKEN=your_token
-MAIL_DOMAIN=example.com
-MAIL_A_RECORD=mail
-MAIL_SERVER_IP=1.2.3.4
-CF_VERISENCE_TECH_TOKEN=cloudflare_api_token
-CF_VERISENCE_TECH_ZONE_ID=cloudflare_zone_id
-                </div>
-
-                <h4>3. aapanel_dmarc_cf.js</h4>
-                <div class="code-block">
-AAPANEL_GETURL=https://IP:PORT/plugin?action=a&name=mail_sys
-AAPANEL_COOKIE=your_cookie
-AAPANEL_TOKEN=your_token
-MAIL_DOMAIN=example.com
-CLOUDFLARE_ZONE_ID=zone_id
-CLOUDFLARE_TOKEN=api_token
-                </div>
-            </div>
-
-            <!-- Input Requirements -->
-            <div class="step">
-                
-                
-                <div class="table-container">
-                    <h4>Sheet3 (Panel Auth):</h4>
-                    <table>
-                        <thead>
-                            <tr>
-                                <th>AAPANEL_ADDURL</th>
-                                <th>AAPANEL_COOKIE</th>
-                                <th>AAPANEL_TOKEN</th>
-                            </tr>
-                        </thead>
-                        <tbody>
-                            <tr>
-                                <td>https://ip:port/plugin?...</td>
-                                <td>cookie_value</td>
-                                <td>token_value</td>
-                            </tr>
-                        </tbody>
-                    </table>
-                </div>
-
-                <div class="table-container">
-                    <h4>Sheet5 (Users):</h4>
-                    <table>
-                        <thead>
-                            <tr>
-                                <th>Domain</th>
-                                <th>Name</th>
-                                <th>Email</th>
-                                <th>Password</th>
-                            </tr>
-                        </thead>
-                        <tbody>
-                            <tr>
-                                <td>example.com</td>
-                                <td>John Doe</td>
-                                <td>john.doe@example.com</td>
-                                <td>pass123</td>
-                            </tr>
-                            <tr>
-                                <td>example.com</td>
-                                <td>Jane Smith</td>
-                                <td>jane.smith@example.com</td>
-                                <td>pass123</td>
-                            </tr>
-                        </tbody>
-                    </table>
-                </div>
-
-                <div class="info">
-                    <h4>Email Generation Logic:</h4>
-                    <ul>
-                        <li><strong>Input Name:</strong> "John Doe"</li>
-                        <li><strong>Process:</strong> "john.doe" (lowercase, spaces to dots)</li>
-                        <li><strong>Domain:</strong> "@example.com"</li>
-                        <li><strong>Result:</strong> "john.doe@example.com"</li>
-                    </ul>
-                </div>
-            </div>
-
-            <!-- aaPanel User Creation Script -->
-            <div class="step">
-                <h3>aaPanel User Creation Script</h3>
-                
-                <div class="user-creation">
-                    <h4>Step 1: Add Environment Variable</h4>
-                    <div class="code-block">
-                        POSTAL_SHEET_NAME=Sheet3
+                <div class="doc-card">
+                    <div class="doc-header">
+                        <h3><i class="fas fa-list-ol"></i> Add Basic Records in Cloudflare</h3>
                     </div>
-                    
-                    <h4>Step 2: Execute the script</h4>
-                    <div class="code-block command">
-                        node aapanel_adduser.js
-                    </div>
-                    
-                    <h4>Step 3: Inside the terminal - Interactive Input</h4>
-                    <div class="terminal-output">
-                        <div class="terminal-line">Enter the mail id u want to create, e.g <span class="terminal-highlight">sophia.davis@yourdomain.com</span></div>
-                        <div class="terminal-line">Enter Your Password : eg-<span class="terminal-highlight">Demand@786</span></div>
-                        <div class="terminal-line">Enter Your Full Name: eg-<span class="terminal-highlight">Sophia Davis</span></div>
-                        <div class="terminal-line">Enter Quota in GB[5]; eg-<span class="terminal-highlight">5</span></div>
-                        <div class="terminal-line">Is Admin?(0=No,1=Yes): eg-<span class="terminal-highlight">0</span></div>
-                        
-                        <div class="terminal-section">
-                            <div class="terminal-title">📋 USER SUMMARY:</div>
-                            <div class="terminal-divider">------------------------------</div>
-                            <div class="terminal-line">Email: <span class="terminal-highlight">sophia.davis@verisence.tech</span></div>
-                            <div class="terminal-line">Domain: <span class="terminal-highlight">verisence.tech</span></div>
-                            <div class="terminal-line">Full Name: <span class="terminal-highlight">sophia davis</span></div>
-                            <div class="terminal-line">Quota: <span class="terminal-highlight">5 GB</span></div>
-                            <div class="terminal-line">Admin: <span class="terminal-highlight">No</span></div>
+                    <div class="doc-body">
+                        <!-- Step 1 -->
+                        <div class="step">
+                            <div class="step-title">
+                                <span class="step-number">1</span>
+                                <span>Preparation of the DNS records in the xlsx sheet</span>
+                            </div>
+                            <p>Prepare the first row for Cloudflare as:</p>
+
+                            <div class="table-container">
+                                <table>
+                                    <thead>
+                                        <tr>
+                                            <th>Domain</th>
+                                            <th>Type</th>
+                                            <th>Name</th>
+                                            <th>Content</th>
+                                            <th>Priority</th>
+                                            <th>zone_id</th>
+                                            <th>token</th>
+                                        </tr>
+                                    </thead>
+                                    <tbody>
+                                        <tr>
+                                            <td>example.com</td>
+                                            <td>A</td>
+                                            <td>@</td>
+                                            <td>192.0.2.1</td>
+                                            <td>-</td>
+                                            <td>abc123...</td>
+                                            <td>CF_Token_1</td>
+                                        </tr>
+                                    </tbody>
+                                </table>
+                            </div>
+
+                            <p>Fill below rows with the correct information under the respective columns.</p>
+                            <p>Go to the Cloudflare dashboard and fetch the zone_id and the access token keys.</p>
+                            <p>Click on <strong>File → Share → Share with Others → Grant access to everyone with the
+                                    link → copy this link → paste this env.</strong></p>
                         </div>
-                        
-                        <div class="terminal-line">Add this user? (y/n): <span class="terminal-highlight">y</span>, eg-<span class="terminal-highlight">y</span></div>
-                        
-                        <div class="terminal-section">
-                            <div class="terminal-title">📤 Sending to aaPanel...</div>
-                            <div class="terminal-title">📨 Response:</div>
-                            <div class="code-block json-response">
-{
-  "status": true,
-  "msg": "Add a mailbox user successfully sophia.davis@verisence.tech"
-}
+
+                        <!-- Step 2 -->
+                        <div class="step">
+                            <div class="step-title">
+                                <span class="step-number">2</span>
+                                <span>ENV preparation</span>
+                            </div>
+                            <p>Edit env and add the correct version of the google sheet url that has access to "anyone
+                                with the link", and add it to the value DNS_FILE_URL key. Also make sure that the
+                                correct sheets link returns the xlsx format not the html.</p>
+
+                            <div class="code-block">
+                                <span class="env-variable">DNS_FILE_URL</span>=<span
+                                    class="env-value">"your_google_sheet_url_here"</span>
+                            </div>
+
+                            <p>Edit env variable Target_Domains and add the list of the domains whose records are to be
+                                added into the Cloudflare.</p>
+
+                            <div class="code-block">
+                                <span class="env-variable">Target_Domains</span>=<span
+                                    class="env-value">"domain1.com,domain2.com,domain3.com"</span>
+                            </div>
+
+                            <p>Edit env variable DNS_SHEET_NAME and add the sheet name value to it, example: Sheet1</p>
+
+                            <div class="code-block">
+                                <span class="env-variable">DNS_SHEET_NAME</span>=<span class="env-value">"Sheet1"</span>
                             </div>
                         </div>
-                        
-                        <div class="terminal-section success">
-                            <div class="terminal-line terminal-success"> SUCCESS: Add a mailbox user successfully sophia.davis@verisence.tech</div>
-                            <div class="terminal-line terminal-success">🎉 User added successfully!</div>
+
+                        <!-- Step 3 -->
+                        <div class="step">
+                            <div class="step-title">
+                                <span class="step-number">3</span>
+                                <span>Run the Node script</span>
+                            </div>
+                            <p>Finally, run the Node script as:</p>
+
+                            <div class="code-block command">
+                                node add_sheets_cf.js
+                            </div>
+
+                            <div class="notice">
+                                <p><strong>Note:</strong> Make sure you have Node.js installed and all dependencies are
+                                    properly configured before running the script.</p>
+                            </div>
                         </div>
                     </div>
                 </div>
-            </div>
+            </section>
 
-            <!-- Verification Steps -->
-            <div class="step">
-                <h3>Verification Steps</h3>
-                
-                <div class="verification">
-                    <h4>Domain Setup:</h4>
-                    <p>aaPanel → Mail Server → Domain List</p>
-                    
-                    <h4>SSL Certificate:</h4>
-                    <p>aaPanel → Mail Server → SSL column (should be GREEN)</p>
-                    
-                    <h4>Cloudflare DNS Records:</h4>
-                    <div class="code-block command">
-                        dig TXT _acme-challenge.example.com
+            <!-- Tab 2: Postal Installation -->
+            <section id="postal-installation" class="tab-content section-blue">
+                <div class="section-header">
+                    <h2>Postal Installation</h2>
+                    <p>Complete setup and configuration of Postal mail server with Cloudflare DNS integration</p>
+                </div>
+
+                <div class="doc-card">
+                    <div class="doc-header">
+                        <h3><i class="fas fa-envelope"></i> Postal Mail Server Setup</h3>
                     </div>
-                    <div class="code-block command">
-                        dig TXT _dmarc.example.com
+                    <div class="doc-body">
+                        <!-- Step 1 -->
+                        <div class="step">
+                            <div class="step-title">
+                                <span class="step-number">1</span>
+                                <span>Prepare the sheet for the SSH credentials</span>
+                            </div>
+                            <p>Add the first row as:</p>
+
+                            <div class="table-container">
+                                <table>
+                                    <thead>
+                                        <tr>
+                                            <th>POSTAL_DOMAIN</th>
+                                            <th>HOST</th>
+                                            <th>SSH_USER</th>
+                                            <th>SSH_PASSWORD</th>
+                                            <th>CF_ZONE_ID</th>
+                                            <th>CF_TOKEN</th>
+                                        </tr>
+                                    </thead>
+                                    <tbody>
+                                        <tr>
+                                            <td>postal.yourdomain.com</td>
+                                            <td>192.168.1.100</td>
+                                            <td>root</td>
+                                            <td>your_password</td>
+                                            <td>abc123...</td>
+                                            <td>CF_Token_1</td>
+                                        </tr>
+                                    </tbody>
+                                </table>
+                            </div>
+
+                            <p>Next, add the correct values in the 2nd respective row.</p>
+                        </div>
+
+                        <!-- Step 2 -->
+                        <div class="step">
+                            <div class="step-title">
+                                <span class="step-number">2</span>
+                                <span>Add the env variables</span>
+                            </div>
+
+                            <div class="code-block">
+                                <span class="env-variable">TARGET_POSTAL_DOMAIN</span> = <span
+                                    class="env-value">postal.yourdomain.com</span>
+                            </div>
+
+                            <div class="code-block">
+                                <span class="env-variable">POSTAL_SHEET_NAME</span> = <span
+                                    class="env-value">Sheet2</span>
+                            </div>
+                        </div>
+
+                        <!-- Step 3 -->
+                        <div class="step">
+                            <div class="step-title">
+                                <span class="step-number">3</span>
+                                <span>Run the script</span>
+                            </div>
+
+                            <div class="code-block command">
+                                node postal_install.js
+                            </div>
+                        </div>
+
+                        <!-- Step 4 -->
+                        <div class="step">
+                            <div class="step-title">
+                                <span class="step-number">4</span>
+                                <span>Wait for the SSL connection</span>
+                            </div>
+                            <p>If the connection is successful, then it prompts you for:</p>
+                            <ul>
+                                <li>Admin email</li>
+                                <li>First_name</li>
+                                <li>Last_name</li>
+                                <li>Initial_password</li>
+                            </ul>
+                            <p>These are for the postal make-user command to run automatically later.</p>
+                        </div>
+
+                        <!-- Steps 5-10 would continue here -->
+                        <div class="step">
+                            <div class="step-title">
+                                <span class="step-number">5</span>
+                                <span>Wait till all commands are executed</span>
+                            </div>
+                            <p>Your postal mail server will be live, if SSL generation doesn't create any errors, like
+                                exceed the limit for certificate generations etc.</p>
+                        </div>
                     </div>
-                    
-                    <h4>Mailboxes:</h4>
-                    <p>aaPanel → Mail Server → Mailbox List</p>
                 </div>
-            </div>
-        </div>
+            </section>
 
-        <!-- Section 4: Add ID Instantly -->
-        <div class="section section-purple">
-            <h2>Add ID Instantly</h2>
-
-            <div class="step">
-                <h3>Step 1: Prepare the sheet</h3>
-                <p>Open Sheet6 and add the columns as:</p>
-
-                <div class="table-container">
-                    <table>
-                        <thead>
-                            <tr>
-                                <th>INSTANTLY_API_KEY</th>
-                                <th>INSTANTLY_EMAIL</th>
-                                <th>INSTANTLY_PASSWORD</th>
-                            </tr>
-                        </thead>
-                        <tbody>
-                            <tr>
-                                <td>your_api_key_here</td>
-                                <td>example@domain.com</td>
-                                <td>YourPassword@123</td>
-                            </tr>
-                        </tbody>
-                    </table>
-                </div>
-            </div>
-
-            <div class="step">
-                <h3>Step 2: Set environment variables</h3>
-                <p>Add the following environment variables to your configuration:</p>
-
-                <div class="code-block">
-                    INSTANTLY_EMAIL=example@domain.com
+            <!-- Tab 3: aaPanel Automation -->
+            <section id="aapanel-automation" class="tab-content section-green">
+                <div class="section-header">
+                    <h2>aaPanel Mail Server Automation</h2>
+                    <p>Complete automation suite for aaPanel mail server setup with Cloudflare DNS integration</p>
                 </div>
 
-                <div class="code-block">
-                    INSTANTLY_PASSWORD=Demand@786
+                <div class="doc-card">
+                    <div class="doc-header">
+                        <h3><i class="fas fa-robot"></i> Automation Overview</h3>
+                    </div>
+                    <div class="doc-body">
+                        <p>This suite of scripts automates mail server setup on aaPanel with Cloudflare DNS integration
+                            and mailbox management. The system reads configuration from Google Sheets and automates the
+                            entire mail server provisioning process.</p>
+
+                        <div class="info-box">
+                            <h4><i class="fas fa-info-circle"></i> Scripts Overview</h4>
+                            <ul>
+                                <li><strong>domain_add_aapanel.js:</strong> Adds mail domains to aaPanel mail server
+                                </li>
+                                <li><strong>add_ssl_aapanel.js:</strong> Requests and installs SSL certificates using
+                                    DNS validation</li>
+                                <li><strong>aapanel_dmarc_cf.js:</strong> Syncs DMARC records from aaPanel to Cloudflare
+                                </li>
+                                <li><strong>aapanel_adduser.js:</strong> Creates mailboxes with interactive prompts</li>
+                            </ul>
+                        </div>
+
+                        <!-- Step 1 -->
+                        <div class="step">
+                            <div class="step-title">
+                                <span class="step-number">1</span>
+                                <span>Environment Configuration</span>
+                            </div>
+                            <p>Add the following environment variables to your configuration:</p>
+
+                            <div class="code-block">
+                                <span class="env-variable">AAPANEL_ADDURL</span>=<span
+                                    class="env-value">https://IP:PORT/plugin?action=a&name=mail_sys&s=add_domain</span><br>
+                                <span class="env-variable">AAPANEL_COOKIE</span>=<span
+                                    class="env-value">your_cookie_here</span><br>
+                                <span class="env-variable">AAPANEL_TOKEN</span>=<span
+                                    class="env-value">your_token_here</span><br>
+                                <span class="env-variable">MAIL_DOMAIN</span>=<span
+                                    class="env-value">example.com</span><br>
+                                <span class="env-variable">MAIL_A_RECORD</span>=<span class="env-value">mail</span><br>
+                                <span class="env-variable">MAIL_SERVER_IP</span>=<span class="env-value">1.2.3.4</span>
+                            </div>
+                        </div>
+
+                        <!-- Step 2 -->
+                        <div class="step">
+                            <div class="step-title">
+                                <span class="step-number">2</span>
+                                <span>Run User Creation Script</span>
+                            </div>
+
+                            <div class="code-block command">
+                                node aapanel_adduser.js
+                            </div>
+
+                            <p>The script will prompt for user details interactively:</p>
+
+                            <div class="terminal">
+                                <div class="terminal-line"><span class="terminal-prompt">$</span> node
+                                    aapanel_adduser.js</div>
+                                <div class="terminal-line"><span class="terminal-output">Enter the mail id u want to
+                                        create, e.g </span><span
+                                        class="terminal-highlight">sophia.davis@yourdomain.com</span></div>
+                                <div class="terminal-line"><span class="terminal-output">Enter Your Password :
+                                        eg-</span><span class="terminal-highlight">Demand@786</span></div>
+                                <div class="terminal-line"><span class="terminal-output">Enter Your Full Name:
+                                        eg-</span><span class="terminal-highlight">Sophia Davis</span></div>
+                                <div class="terminal-line"><span class="terminal-output">Enter Quota in GB[5];
+                                        eg-</span><span class="terminal-highlight">5</span></div>
+                                <div class="terminal-line"><span class="terminal-output">Is Admin?(0=No,1=Yes):
+                                        eg-</span><span class="terminal-highlight">0</span></div>
+                                <div class="terminal-line"><br></div>
+                                <div class="terminal-line"><span class="terminal-highlight">📋 USER SUMMARY:</span>
+                                </div>
+                                <div class="terminal-line">Email: <span
+                                        class="terminal-highlight">sophia.davis@verisence.tech</span></div>
+                                <div class="terminal-line">Domain: <span
+                                        class="terminal-highlight">verisence.tech</span></div>
+                                <div class="terminal-line">Full Name: <span class="terminal-highlight">sophia
+                                        davis</span></div>
+                                <div class="terminal-line">Quota: <span class="terminal-highlight">5 GB</span></div>
+                                <div class="terminal-line">Admin: <span class="terminal-highlight">No</span></div>
+                                <div class="terminal-line"><br></div>
+                                <div class="terminal-line"><span class="terminal-output">Add this user? (y/n):
+                                    </span><span class="terminal-highlight">y</span></div>
+                                <div class="terminal-line"><span class="terminal-output">📤 Sending to aaPanel...</span>
+                                </div>
+                                <div class="terminal-line"><span class="terminal-output">📨 Response:</span></div>
+                                <div class="terminal-line">{</div>
+                                <div class="terminal-line"> "status": true,</div>
+                                <div class="terminal-line"> "msg": "Add a mailbox user successfully
+                                    sophia.davis@verisence.tech"</div>
+                                <div class="terminal-line">}</div>
+                                <div class="terminal-line"><span class="terminal-highlight">🎉 User added
+                                        successfully!</span></div>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </section>
+
+            <!-- Tab 4: Add ID Instantly -->
+            <section id="instantly-integration" class="tab-content section-purple">
+                <div class="section-header">
+                    <h2>Add ID Instantly</h2>
+                    <p>Integrate email accounts with Instantly platform for automated outreach</p>
                 </div>
 
-                <div class="code-block">
-                    INSTANTLY_SHEET_NAME=Sheet6
-                </div>
-            </div>
+                <div class="doc-card">
+                    <div class="doc-header">
+                        <h3><i class="fas fa-bolt"></i> Instantly Integration Setup</h3>
+                    </div>
+                    <div class="doc-body">
+                        <!-- Step 1 -->
+                        <div class="step">
+                            <div class="step-title">
+                                <span class="step-number">1</span>
+                                <span>Prepare the sheet</span>
+                            </div>
+                            <p>Open Sheet6 and add the columns as:</p>
 
-            <div class="step">
-                <h3>Step 3: Run the Node Script</h3>
+                            <div class="table-container">
+                                <table>
+                                    <thead>
+                                        <tr>
+                                            <th>INSTANTLY_API_KEY</th>
+                                            <th>INSTANTLY_EMAIL</th>
+                                            <th>INSTANTLY_PASSWORD</th>
+                                        </tr>
+                                    </thead>
+                                    <tbody>
+                                        <tr>
+                                            <td>your_api_key_here</td>
+                                            <td>example@domain.com</td>
+                                            <td>YourPassword@123</td>
+                                        </tr>
+                                    </tbody>
+                                </table>
+                            </div>
+                        </div>
 
-                <div class="code-block command">
-                    node add_id_instantly.js
-                </div>
+                        <!-- Step 2 -->
+                        <div class="step">
+                            <div class="step-title">
+                                <span class="step-number">2</span>
+                                <span>Set environment variables</span>
+                            </div>
+                            <p>Add the following environment variables to your configuration:</p>
 
-                <div class="terminal-output">
-                    <div class="terminal-line">Enter email to connect : eg-<span class="terminal-highlight">ava@gmail.com</span></div>
-                    <div class="terminal-line">Enter IMAP Password : eg-<span class="terminal-highlight">Demand@786</span></div>
-                    <div class="terminal-line">Enter SMTP Password : eg-<span class="terminal-highlight">Demand@786</span></div>
-                    <div class="terminal-line terminal-success">Connected Successfully</div>
+                            <div class="code-block">
+                                <span class="env-variable">INSTANTLY_EMAIL</span>=<span
+                                    class="env-value">example@domain.com</span><br>
+                                <span class="env-variable">INSTANTLY_PASSWORD</span>=<span
+                                    class="env-value">Demand@786</span><br>
+                                <span class="env-variable">INSTANTLY_SHEET_NAME</span>=<span
+                                    class="env-value">Sheet6</span>
+                            </div>
+                        </div>
+
+                        <!-- Step 3 -->
+                        <div class="step">
+                            <div class="step-title">
+                                <span class="step-number">3</span>
+                                <span>Run the Node Script</span>
+                            </div>
+
+                            <div class="code-block command">
+                                node add_id_instantly.js
+                            </div>
+
+                            <div class="terminal">
+                                <div class="terminal-line"><span class="terminal-prompt">$</span> node
+                                    add_id_instantly.js</div>
+                                <div class="terminal-line"><span class="terminal-output">Enter email to connect :
+                                        eg-</span><span class="terminal-highlight">ava@gmail.com</span></div>
+                                <div class="terminal-line"><span class="terminal-output">Enter IMAP Password :
+                                        eg-</span><span class="terminal-highlight">Demand@786</span></div>
+                                <div class="terminal-line"><span class="terminal-output">Enter SMTP Password :
+                                        eg-</span><span class="terminal-highlight">Demand@786</span></div>
+                                <div class="terminal-line"><span class="terminal-highlight">Connected
+                                        Successfully</span></div>
+                            </div>
+                        </div>
+                    </div>
                 </div>
-            </div>
-        </div>
+            </section>
+        </main>
     </div>
+
+    <script>
+        // Tab switching functionality
+        document.addEventListener('DOMContentLoaded', function () {
+            const tabs = document.querySelectorAll('.tab');
+            const navLinks = document.querySelectorAll('.nav-links a');
+            const tabContents = document.querySelectorAll('.tab-content');
+
+            // Function to switch tabs
+            function switchTab(tabId) {
+                // Update tabs
+                tabs.forEach(tab => {
+                    if (tab.dataset.tab === tabId) {
+                        tab.classList.add('active');
+                    } else {
+                        tab.classList.remove('active');
+                    }
+                });
+
+                // Update tab contents
+                tabContents.forEach(content => {
+                    if (content.id === tabId) {
+                        content.classList.add('active');
+                    } else {
+                        content.classList.remove('active');
+                    }
+                });
+
+                // Update nav links
+                navLinks.forEach(link => {
+                    if (link.dataset.tab === tabId) {
+                        link.classList.add('active');
+                    } else {
+                        link.classList.remove('active');
+                    }
+                });
+
+                // Update URL hash
+                window.location.hash = tabId;
+            }
+
+            // Tab click event
+            tabs.forEach(tab => {
+                tab.addEventListener('click', function () {
+                    const tabId = this.dataset.tab;
+                    switchTab(tabId);
+                });
+            });
+
+            // Nav link click event
+            navLinks.forEach(link => {
+                link.addEventListener('click', function (e) {
+                    e.preventDefault();
+                    const tabId = this.dataset.tab;
+                    switchTab(tabId);
+                });
+            });
+
+            // Check URL hash on load
+            if (window.location.hash) {
+                const tabId = window.location.hash.substring(1);
+                if (document.getElementById(tabId)) {
+                    switchTab(tabId);
+                }
+            }
+
+            // Mobile menu toggle (if needed in future)
+            const mobileMenuToggle = document.createElement('button');
+            mobileMenuToggle.innerHTML = '<i class="fas fa-bars"></i>';
+            mobileMenuToggle.classList.add('mobile-menu-toggle');
+
+            // Add responsive behavior
+            function handleResize() {
+                if (window.innerWidth <= 768) {
+                    document.querySelector('.sidebar').style.display = 'block';
+                } else {
+                    document.querySelector('.sidebar').style.display = 'block';
+                }
+            }
+
+            window.addEventListener('resize', handleResize);
+            handleResize();
+        });
+    </script>
 </body>
+
 </html>
